@@ -14,6 +14,7 @@ Sources/Hush/
 │   │   ├── PeerPresence.swift
 │   │   └── HeartbeatSchedule.swift
 │   ├── Application/
+│   │   └── PresenceService.swift
 │   ├── Infrastructure/
 │   └── Presentation/
 └── Messaging/
@@ -35,6 +36,7 @@ Tests/HushTests/
 │   │   ├── PeerPresenceTests.swift
 │   │   └── HeartbeatScheduleTests.swift
 │   ├── Application/
+│   │   └── PresenceServiceTests.swift
 │   ├── Infrastructure/
 │   └── Presentation/
 └── Messaging/
@@ -92,6 +94,10 @@ Tests/HushTests/
 
 `Presence/Domain/HeartbeatSchedule.swift`와 대응하는 테스트에 첫 heartbeat 즉시 송신 판단과 마지막 송신 후 3초 경계가 구현되어 있다. 송신 시점 조회는 기록을 바꾸지 않으며, 실제 송신 후 `recordHeartbeatSent(at:)`로 마지막 송신 시각을 기록한다.
 
+`Presence/Application/PresenceService.swift`는 `HeartbeatSchedule`과 `PeerPresence`를 연결한다. 시작 시 지정하는 `Role.chat`은 heartbeat 송신 시점을 판단하고, `Role.backgroundReceiver`는 heartbeat를 송신하지 않도록 판단한다. 역할은 요구사항의 논리적 역할을 나타내며, 실제 프로세스 구성이나 실행 관리를 구현한 것은 아니다.
+
+`shouldSendHeartbeat(at:)`로 송신 여부를 조회하고 실제 송신 후 `recordHeartbeatSent(at:)`로 송신 시각을 기록한다. `receiveHeartbeat(at:)`는 복호화·검증을 마친 상대 heartbeat의 수신 시각을 반영하며, `isPeerOnline(at:)`로 상대 상태를 조회한다. 내 송신 시각과 상대 수신 시각은 독립적으로 관리한다. 역할별 송신 여부와 3초·12초 경계 및 송수신 상태의 독립성은 `Presence/Application/PresenceServiceTests.swift`에서 검증한다.
+
 `Messaging/Domain/MessageIdentity.swift`와 대응하는 테스트에 메시지 식별값 비교가 구현되어 있다. 발신 IP, 최초 생성 시각, 내용 해시를 불변 값으로 보관하며, 세 값이 모두 같아야 같은 메시지로 판별한다. IP와 내용 해시는 문자열로, 생성 시각은 `Date`로 전달받는다.
 
 `Messaging/Domain/MessageDeduplicator.swift`는 식별값을 `Set`으로 관리하며, `register(_:)`는 처음 등록한 식별값에만 `true`를 반환한다. `MessageIdentity`는 세 필드의 동등성을 유지하면서 `Hashable`을 따른다.
@@ -110,4 +116,4 @@ Tests/HushTests/
 
 송신과 수신은 같은 중복 판별 상태를 사용하므로 내 메시지를 다시 수신해도 기록과 표시 대상이 늘어나지 않는다. 기존 기록을 전달해 서비스를 시작하면 복원한 대화에도 같은 규칙이 적용된다. 수신 입력은 복호화·검증을 마친 `ChatMessage`를 전제로 하며, 현재 서비스는 네트워크 입출력이나 암호화를 수행하지 않는다.
 
-현재 구현은 도메인 규칙과 메모리 내 송신 준비·수신 처리 흐름이다. 실제 송수신과 암호화 저장, CLI 연결은 이후 단계에서 구현한다.
+현재 구현은 도메인 규칙과 메모리 내 메시지 송신 준비·수신 처리, 역할별 heartbeat 송신 판단·상대 상태 조회 흐름이다. 실제 송수신과 암호화 저장, CLI 연결은 이후 단계에서 구현한다.
