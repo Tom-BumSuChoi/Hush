@@ -1,0 +1,65 @@
+# Hush 실행과 검증
+
+## 빌드
+
+macOS 13 이상에서 실행하며, 개발에는 Swift 6.4 도구 체인을 사용한다. Swift Testing을 실행하는 개발 환경은 macOS 14 이상을 사용한다.
+
+```sh
+swift build -c release
+swift build -c release --show-bin-path
+```
+
+두 Mac에는 동일한 `HushConfig.communicationKey`가 포함된 실행 파일을 배포한다. 아래 명령은 빌드 경로의 실행 파일을 직접 사용한다.
+
+## 채팅
+
+```sh
+swift run Hush chat --interface en0
+```
+
+사용 중인 네트워크 이름이 `en0`이 아니면 실제 인터페이스 이름을 지정한다. 네트워크가 하나뿐이면 `--interface`를 생략할 수 있다. 최초 실행에는 개인 비밀번호와 확인 값을 입력하고, 이후에는 실행할 때마다 비밀번호를 다시 입력한다. 비밀번호를 인자나 환경 변수로 전달하는 방식은 지원하지 않는다.
+
+기본 기록 위치는 `~/Library/Application Support/Hush/history.json`이며 기본 UDP 포트는 49000이다. 두 Mac은 같은 포트를 사용해야 한다. `--history-directory`로 기록 위치, `--port`로 포트를 지정할 수 있다.
+
+내 메시지는 청록색과 굵기로 표시하며 새 상대 메시지는 `새 메시지`라는 텍스트로 알린다. 소리와 시스템 배너는 사용하지 않는다. iTerm2와 VS Code에서는 이 새 출력을 통해 확인할 수 있다. 터미널을 보고 있지 않을 때의 탭 표시 방식은 각 터미널 설정에 따른다.
+
+Enter로 송신하며, Backspace로 마지막 글자를 지우고 Ctrl-U로 입력을 지운다. `/quit` 또는 빈 입력에서 Ctrl-D로 채팅을 종료하면 진행 중인 세 번 송신을 마친 뒤 종료한다. Ctrl-C는 즉시 종료하며 대기 중인 송신이 중단될 수 있다. 메시지 한 건의 입력 한도는 UTF-8 기준 8192바이트이며 초과 입력은 송신하지 않고 안내한다.
+
+## 화면 종료 후 수신
+
+별도 터미널에서 수신기를 실행하고 비밀번호를 입력한다.
+
+```sh
+swift run Hush receive --interface en0
+```
+
+수신기는 메시지를 표시하지 않고 같은 개인 기록에 암호화 저장한다. 채팅과 수신 역할은 각각 한 번만 실행할 수 있으며, 둘을 함께 실행할 수 있다. 채팅만 종료해도 수신기는 유지된다. 인증을 마친 수신기는 터미널을 닫아 발생하는 SIGHUP을 무시하므로 해당 프로세스가 계속 실행 중이면 수신을 유지한다. 재부팅·잠자기·네트워크 단절 중의 수신은 보장하지 않는다.
+
+수신기 터미널이 열려 있으면 Ctrl-C로 종료한다. 터미널을 닫은 뒤에는 시작 시 표시된 PID로 `kill -TERM <PID>`를 실행한다. 수신기를 다시 실행할 때도 비밀번호 입력이 필요하다. 자동 시작이나 비밀번호 자동 제공은 구현하지 않는다.
+
+## 테스트
+
+```sh
+swift test
+```
+
+실제 CLI 통합 테스트는 임시 디렉터리와 임시 UDP 포트를 사용한다. `Tools/PacketFixture.swift`는 제품의 암호화 코덱과 기록 저장을 사용해 테스트 패킷 생성과 저장 결과 조회를 담당한다.
+
+```sh
+swift build
+swiftc -parse-as-library Sources/Hush/Configuration/HushConfig.swift \
+  Sources/Hush/Messaging/Domain/MessageIdentity.swift \
+  Sources/Hush/Messaging/Domain/ChatMessage.swift \
+  Sources/Hush/Messaging/Domain/RecordedMessage.swift \
+  Sources/Hush/Messaging/Application/ConversationStore.swift \
+  Sources/Hush/Messaging/Infrastructure/PacketCodec.swift \
+  Sources/Hush/Messaging/Infrastructure/HistoryStore.swift \
+  Sources/Hush/Messaging/Infrastructure/UDPTransport.swift \
+  Tools/PacketFixture.swift -o .build/PacketFixture
+python3 Tools/test_cli.py --binary "$(swift build --show-bin-path)/Hush" \
+  --fixture .build/PacketFixture --interface en0
+```
+
+이 검증은 실제 PTY의 비밀번호 숨김·재인증, UDP 반복 송신과 수신 중복 제거, heartbeat 경계, 터미널 종료 후 저장, 기록 복원, 잘못된 비밀번호·중복 실행·파이프 입력 거부, 터미널 입력 모드 복원을 확인한다. 실제 사내망 두 Mac 사이의 브로드캐스트와 iTerm2·VS Code에서의 사용 검증은 별도로 수행해야 한다.
+
+자동 업데이트는 다음 구현 단위이며 실제 배포 URL은 아직 없다.
