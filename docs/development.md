@@ -18,6 +18,7 @@ Sources/Hush/
 │   └── Presentation/
 └── Messaging/
     ├── Domain/
+    │   └── MessageIdentity.swift
     ├── Application/
     ├── Infrastructure/
     └── Presentation/
@@ -33,6 +34,7 @@ Tests/HushTests/
 │   └── Presentation/
 └── Messaging/
     ├── Domain/
+    │   └── MessageIdentityTests.swift
     ├── Application/
     ├── Infrastructure/
     └── Presentation/
@@ -79,4 +81,8 @@ Tests/HushTests/
 
 `Presence/Domain/HeartbeatSchedule.swift`와 대응하는 테스트에 첫 heartbeat 즉시 송신 판단과 마지막 송신 후 3초 경계가 구현되어 있다. 송신 시점 조회는 기록을 바꾸지 않으며, 실제 송신 후 `recordHeartbeatSent(at:)`로 마지막 송신 시각을 기록한다.
 
-현재 구현은 시각을 전달받아 상태와 송신 시점을 판단하는 도메인 규칙이다. 실제 heartbeat 송수신과 CLI 연결은 이후 단계에서 구현한다.
+`Messaging/Domain/MessageIdentity.swift`와 대응하는 테스트에 메시지 식별값 비교가 구현되어 있다. 발신 IP, 최초 생성 시각, 내용 해시를 불변 값으로 보관하며, 세 값이 모두 같아야 같은 메시지로 판별한다. IP와 내용 해시는 문자열로, 생성 시각은 `Date`로 전달받는다.
+
+내용 해시 생성, 전송 타임스탬프 형식, 중복 식별값의 보관·만료·재시작 처리 정책은 아직 결정하지 않았다.
+
+현재 구현은 전달받은 값으로 온라인 상태, 송신 시점, 메시지 식별값을 판단하는 도메인 규칙이다. 실제 송수신과 CLI 연결은 이후 단계에서 구현한다.
