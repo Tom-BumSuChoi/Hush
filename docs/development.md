@@ -11,7 +11,8 @@ Sources/Hush/
 │   └── HushConfig.swift
 ├── Presence/
 │   ├── Domain/
-│   │   └── PeerPresence.swift
+│   │   ├── PeerPresence.swift
+│   │   └── HeartbeatSchedule.swift
 │   ├── Application/
 │   ├── Infrastructure/
 │   └── Presentation/
@@ -25,7 +26,8 @@ Tests/HushTests/
 ├── HushTests.swift
 ├── Presence/
 │   ├── Domain/
-│   │   └── PeerPresenceTests.swift
+│   │   ├── PeerPresenceTests.swift
+│   │   └── HeartbeatScheduleTests.swift
 │   ├── Application/
 │   ├── Infrastructure/
 │   └── Presentation/
@@ -54,6 +56,8 @@ Tests/HushTests/
 
 현재 `peerOfflineThreshold`는 마지막 heartbeat 수신 후 오프라인으로 판단하는 기준이며, 단위는 초이고 값은 12이다.
 
+`heartbeatInterval`은 마지막 heartbeat 송신 후 다음 송신까지의 간격이며, 단위는 초이고 값은 3이다. 첫 heartbeat는 채팅 시작 즉시 송신한다.
+
 ## 3. TDD와 테스트 스타일
 
 - 기존 Swift Testing을 사용하고 검증은 `#expect(...)`로 작성한다.
@@ -71,4 +75,8 @@ Tests/HushTests/
 
 ## 5. 현재 구현 범위
 
-`Presence/Domain/PeerPresence.swift`와 대응하는 테스트에 heartbeat 수신 여부, 마지막 수신 후 12초 경계, 재수신 시 온라인 전환이 구현되어 있다. 실제 heartbeat 송수신과 CLI 연결은 이후 단계에서 구현한다.
+`Presence/Domain/PeerPresence.swift`와 대응하는 테스트에 heartbeat 수신 여부, 마지막 수신 후 12초 경계, 재수신 시 온라인 전환이 구현되어 있다.
+
+`Presence/Domain/HeartbeatSchedule.swift`와 대응하는 테스트에 첫 heartbeat 즉시 송신 판단과 마지막 송신 후 3초 경계가 구현되어 있다. 송신 시점 조회는 기록을 바꾸지 않으며, 실제 송신 후 `recordHeartbeatSent(at:)`로 마지막 송신 시각을 기록한다.
+
+현재 구현은 시각을 전달받아 상태와 송신 시점을 판단하는 도메인 규칙이다. 실제 heartbeat 송수신과 CLI 연결은 이후 단계에서 구현한다.
