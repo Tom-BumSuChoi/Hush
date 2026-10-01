@@ -24,6 +24,7 @@ Sources/Hush/
     │   ├── ChatMessage.swift
     │   └── Conversation.swift
     ├── Application/
+    │   └── MessagingService.swift
     ├── Infrastructure/
     └── Presentation/
 
@@ -43,6 +44,7 @@ Tests/HushTests/
     │   ├── MessageTransmissionPlanTests.swift
     │   └── ConversationTests.swift
     ├── Application/
+    │   └── MessagingServiceTests.swift
     ├── Infrastructure/
     └── Presentation/
 ```
@@ -104,4 +106,8 @@ Tests/HushTests/
 
 기존 메시지 목록으로 대화를 복원할 때도 같은 기록 규칙을 적용한다. 복원할 목록 안의 중복과 이후 재수신한 기존 메시지는 추가되지 않으며, 복원 이후 새 메시지를 기록할 수 있다. 이 동작은 `Messaging/Domain/ConversationTests.swift`에서 검증한다.
 
-현재 구현은 온라인 상태, heartbeat 송신 시점, 메시지 식별값과 중복 여부, 반복 송신 계획, 메모리 대화 기록을 다루는 도메인 규칙이다. 실제 송수신과 암호화 저장, CLI 연결은 이후 단계에서 구현한다.
+`Messaging/Application/MessagingService.swift`는 하나의 `Conversation`으로 송신 준비와 수신 처리를 연결한다. `prepareSend(_:at:)`는 새 메시지를 한 번 기록하고 세 번의 전송 계획을 반환하며, 이미 기록된 식별값에는 추가 계획을 만들지 않는다. `receive(_:)`는 새 메시지만 기록하고 표시 대상으로 반환하며, 중복에는 `nil`을 반환한다.
+
+송신과 수신은 같은 중복 판별 상태를 사용하므로 내 메시지를 다시 수신해도 기록과 표시 대상이 늘어나지 않는다. 기존 기록을 전달해 서비스를 시작하면 복원한 대화에도 같은 규칙이 적용된다. 수신 입력은 복호화·검증을 마친 `ChatMessage`를 전제로 하며, 현재 서비스는 네트워크 입출력이나 암호화를 수행하지 않는다.
+
+현재 구현은 도메인 규칙과 메모리 내 송신 준비·수신 처리 흐름이다. 실제 송수신과 암호화 저장, CLI 연결은 이후 단계에서 구현한다.
