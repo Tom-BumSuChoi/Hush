@@ -20,7 +20,9 @@ Sources/Hush/
     ├── Domain/
     │   ├── MessageIdentity.swift
     │   ├── MessageDeduplicator.swift
-    │   └── MessageTransmissionPlan.swift
+    │   ├── MessageTransmissionPlan.swift
+    │   ├── ChatMessage.swift
+    │   └── Conversation.swift
     ├── Application/
     ├── Infrastructure/
     └── Presentation/
@@ -38,7 +40,8 @@ Tests/HushTests/
     ├── Domain/
     │   ├── MessageIdentityTests.swift
     │   ├── MessageDeduplicatorTests.swift
-    │   └── MessageTransmissionPlanTests.swift
+    │   ├── MessageTransmissionPlanTests.swift
+    │   └── ConversationTests.swift
     ├── Application/
     ├── Infrastructure/
     └── Presentation/
@@ -97,4 +100,8 @@ Tests/HushTests/
 
 `Messaging/Domain/MessageTransmissionPlan.swift`와 대응하는 테스트에 메시지 한 건의 세 번 반복 송신 계획이 구현되어 있다. 송신 시작 시각을 기준으로 1초 동안 균등한 간격으로 세 전송 항목을 만들며, 각 항목은 같은 메시지 식별값을 유지한다. 이 객체는 예정 시각을 계산하며, 실제 대기나 패킷 송신은 수행하지 않는다.
 
-현재 구현은 온라인 상태, heartbeat 송신 시점, 메시지 식별값과 중복 여부, 반복 송신 계획을 다루는 도메인 규칙이다. 실제 송수신과 암호화 저장, CLI 연결은 이후 단계에서 구현한다.
+`Messaging/Domain/ChatMessage.swift`는 메시지 식별값과 내용을 불변 값으로 묶는다. `Messaging/Domain/Conversation.swift`는 `MessageDeduplicator`를 사용해 메시지를 중복 없이 메모리에 보관한다. `record(_:)`는 새 메시지를 추가했을 때만 `true`를 반환하며, 기록 목록은 외부에서 조회할 수 있고 수정은 대화 객체가 담당한다.
+
+기존 메시지 목록으로 대화를 복원할 때도 같은 기록 규칙을 적용한다. 복원할 목록 안의 중복과 이후 재수신한 기존 메시지는 추가되지 않으며, 복원 이후 새 메시지를 기록할 수 있다. 이 동작은 `Messaging/Domain/ConversationTests.swift`에서 검증한다.
+
+현재 구현은 온라인 상태, heartbeat 송신 시점, 메시지 식별값과 중복 여부, 반복 송신 계획, 메모리 대화 기록을 다루는 도메인 규칙이다. 실제 송수신과 암호화 저장, CLI 연결은 이후 단계에서 구현한다.
