@@ -137,3 +137,7 @@ Tests/HushTests/
 `CLIApplication`의 `poll` 이벤트 루프는 UDP 수신, 터미널 입력, 반복 송신과 heartbeat를 연결한다. 채팅과 수신기는 각각 비밀번호로 자신의 메모리 내 기록용 키를 얻고, 암호화 파일만 공유한다. `RoleLease`는 같은 기록에 같은 역할이 중복 실행되는 것을 막는다. 수신 역할은 SIGHUP을 무시하며 heartbeat를 송신하지 않는다. 채팅의 새 출력에는 작성 중인 입력을 다시 표시하고, 종료 시 터미널 입력 상태를 복원한다.
 
 실행 방법과 실제 PTY·UDP 통합 검증 명령은 [실행과 검증](running.md)을 따른다. 자동 업데이트는 이후 작업 단위이다.
+
+## 8. 업데이트 규칙
+
+`Updates/Domain/ReleaseVersion`은 안정 버전의 `주.부.패치` 세 숫자를 비교하며, 선행 0과 prerelease 등 지원하지 않는 형식을 거부한다. `UpdateSchedule`은 실행 시 최초 확인과 마지막 확인 이후 600초 경계를 시스템 단조 시각으로 판단한다. 확인 주기는 `HushConfig.updateCheckInterval`에 둔다. 다운로드·검증·교체·재시작은 이후 작업 단위에서 연결한다.
