@@ -194,7 +194,42 @@ def main():
             assert (history_directory / "history.json").read_bytes() == before
             tampered.send("/quit\r")
             assert tampered.wait() == 0
-            print("PASS: release 버전 교체·HTTP 대기 중 채팅·동시 역할 재시작·키 재인증·소켓 정리·수신 재개·변조 거부")
+
+            # Given: 인증한 수신기가 터미널을 닫은 채 새 버전 응답을 기다립니다.
+            server.ready.clear()
+            server.binary = new.read_bytes()
+            detached = launch("receive")
+            detached.unlock(password)
+            detached.expect("수신 중")
+            os.close(detached.fd)
+            detached.fd = None
+            assert os.waitpid(detached.pid, os.WNOHANG)[0] == 0
+            # When: 터미널이 없는 수신기에 업데이트를 제공합니다.
+            server.ready.set()
+            assert detached.wait(timeout=25) == 1
+            # Then: 새 파일로 교체하되 비밀번호를 자동 제공하지 않고 기록을 유지합니다.
+            assert subprocess.check_output([str(installed), "--version"]).decode().strip() == "0.2.0"
+            assert (history_directory / "history.json").read_bytes() == before
+            restored = launch("receive")
+            restored.expect("개인 비밀번호: ")
+            probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            probe.bind(("0.0.0.0", port))
+            probe.close()
+            restored.send(password + "\n")
+            restored.expect("수신 중")
+            incoming = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            incoming.bind(("127.0.0.1", 0))
+            try:
+                packet = base64.b64decode(subprocess.check_output([fixture, "message", "새 터미널에서 수신 재개", "2002"]))
+                for _ in range(3):
+                    incoming.sendto(packet, ("127.0.0.1", port))
+                records = wait_for_history(3)
+            finally:
+                incoming.close()
+            assert records[-1]["message"]["content"] == "새 터미널에서 수신 재개"
+            assert password.encode() not in restored.output
+            restored.close()
+            print("PASS: release 버전 교체·HTTP 대기 중 채팅·동시 역할 재시작·키 재인증·소켓 정리·수신 재개·변조 거부·터미널 없는 재시작과 복구")
     finally:
         server.ready.set()
         for app in apps:
