@@ -1,0 +1,24 @@
+{
+    "configurations": [
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:Hush}",
+            "name": "Debug Hush",
+            "target": "Hush",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug Hush"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:Hush}",
+            "name": "Release Hush",
+            "target": "Hush",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release Hush"
+        }
+    ]
+}
