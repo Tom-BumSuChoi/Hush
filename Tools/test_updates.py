@@ -1,13 +1,16 @@
 """실제 Hush 두 버전·HTTP·PTY로 자동 교체와 재인증 검증."""
 import argparse
+import base64
 import json
 import os
+import re
 import select
 import shutil
 import socket
 import subprocess
 import tempfile
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -67,16 +70,22 @@ def main():
             public_key = subprocess.check_output([release_tool, "keygen", str(directory / "keys")]).decode().strip()
             config = source / "Sources/Hush/Configuration/HushConfig.swift"
             original = config.read_text()
-            configured = original.replace('static let updateManifestURL: URL? = nil',
-                f'static let updateManifestURL: URL? = URL(string: "http://127.0.0.1:{server.server_port}/manifest.json")')
-            configured = configured.replace('static let updateSigningPublicKeyBase64: String? = nil',
-                f'static let updateSigningPublicKeyBase64: String? = "{public_key}"')
+
+            def setting(contents, name, value):
+                pattern = rf"(?m)^([ \t]*static let {name}[^=\n]*= ).*$"
+                updated, count = re.subn(pattern, lambda match: match[1] + value, contents)
+                assert count == 1, f"테스트 설정을 찾을 수 없음: {name}"
+                return updated
+
+            configured = setting(original, "updateManifestURL",
+                f'URL(string: "http://127.0.0.1:{server.server_port}/manifest.json")')
+            configured = setting(configured, "updateSigningPublicKeyBase64", json.dumps(public_key))
 
             def build(version):
-                config.write_text(configured.replace('static let version = "0.1.0"', f'static let version = "{version}"'))
-                result = subprocess.run(["swift", "build", "--package-path", str(source)], capture_output=True)
+                config.write_text(setting(configured, "version", json.dumps(version)))
+                result = subprocess.run(["swift", "build", "-c", "release", "--package-path", str(source)], capture_output=True)
                 assert result.returncode == 0, result.stderr.decode()
-                path = subprocess.check_output(["swift", "build", "--package-path", str(source), "--show-bin-path"]).decode().strip()
+                path = subprocess.check_output(["swift", "build", "-c", "release", "--package-path", str(source), "--show-bin-path"]).decode().strip()
                 target = directory / ("Hush-" + version)
                 shutil.copy2(Path(path) / "Hush", target)
                 return target
@@ -102,6 +111,18 @@ def main():
                 apps.append(app)
                 return app
 
+            def history():
+                return json.loads(subprocess.check_output([fixture, "history", str(history_directory), password]))
+
+            def wait_for_history(count):
+                deadline = time.monotonic() + 5
+                while time.monotonic() < deadline:
+                    records = history()
+                    if len(records) == count:
+                        return records
+                    time.sleep(0.05)
+                raise AssertionError(f"기록 수 대기 실패: {count}")
+
             # Given: 서명한 새 버전의 HTTP 응답을 기다리며 기존 두 역할이 실행 중입니다.
             receiver = launch("receive")
             receiver.unlock(password, first=True)
@@ -111,8 +132,7 @@ def main():
             chat.expect("내 IP")
             chat.send("업데이트 이전 기록\r")
             chat.expect("업데이트 이전 기록")
-            saved = subprocess.check_output([fixture, "history", str(history_directory), password])
-            assert len(json.loads(saved)) == 1
+            wait_for_history(1)
             before = (history_directory / "history.json").read_bytes()
             chat.output = b""
             receiver.output = b""
@@ -127,6 +147,13 @@ def main():
             probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             probe.bind(("0.0.0.0", port))
             probe.close()
+            incoming = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            incoming.bind(("127.0.0.1", 0))
+            try:
+                locked_packet = base64.b64decode(subprocess.check_output([fixture, "message", "재인증 이전 수신", "2000"]))
+                incoming.sendto(locked_packet, ("127.0.0.1", port))
+            finally:
+                incoming.close()
             chat.send(password + "\n")
             receiver.send(password + "\n")
             chat.expect("Hush 0.2.0")
@@ -136,7 +163,22 @@ def main():
             assert password.encode() not in receiver.output
             chat.send("/quit\r")
             assert chat.wait() == 0
+            # When: 재인증한 새 버전 수신기에 기존 형식의 메시지를 반복 송신합니다.
+            incoming = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            incoming.bind(("127.0.0.1", 0))
+            try:
+                packet = base64.b64decode(subprocess.check_output([fixture, "message", "업데이트 이후 수신", "2001"]))
+                for _ in range(3):
+                    incoming.sendto(packet, ("127.0.0.1", port))
+                records = wait_for_history(2)
+            finally:
+                incoming.close()
+            # Then: 수신기 단독으로 저장을 재개하며 잠금 중 패킷은 저장되지 않습니다.
+            assert [record["message"]["content"] for record in records] == ["업데이트 이전 기록", "업데이트 이후 수신"]
+            assert records[-1]["message"]["identity"]["senderIP"] == "127.0.0.1"
+            assert records[-1]["isOutgoing"] is False
             receiver.close()
+            before = (history_directory / "history.json").read_bytes()
             assert server.requests.count("/Hush") >= 1
 
             # Given: 파일이 변조된 배포 응답과 기존 실행 버전이 있습니다.
@@ -152,7 +194,7 @@ def main():
             assert (history_directory / "history.json").read_bytes() == before
             tampered.send("/quit\r")
             assert tampered.wait() == 0
-            print("PASS: HTTP 대기 중 채팅·서명 다운로드·동시 역할 자동 재시작·키 재인증·소켓 정리·기록 유지·변조 거부")
+            print("PASS: release 버전 교체·HTTP 대기 중 채팅·동시 역할 재시작·키 재인증·소켓 정리·수신 재개·변조 거부")
     finally:
         server.ready.set()
         for app in apps:
