@@ -69,7 +69,7 @@ struct HistoryStoreTests {
         // When: 통신용 키로 개인 기록을 복호화합니다.
         // Then: 개인 기록용 키와 분리되어 복호화할 수 없습니다.
         #expect(throws: (any Error).self) {
-            try AES.GCM.open(box, using: SymmetricKey(size: .bits256), authenticating: Data("Hush.history.v1".utf8))
+            try AES.GCM.open(box, using: HushConfig.communicationKey, authenticating: Data("Hush.history.v1".utf8))
         }
     }
 }
