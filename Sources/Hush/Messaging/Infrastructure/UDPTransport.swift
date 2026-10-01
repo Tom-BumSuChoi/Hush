@@ -34,6 +34,7 @@ final class UDPTransport {
             }
             guard bound == 0 else { throw SocketFailure("UDP 포트 바인딩") }
             guard fcntl(fd, F_SETFL, O_NONBLOCK) >= 0 else { throw SocketFailure("UDP 비차단 설정") }
+            guard fcntl(fd, F_SETFD, FD_CLOEXEC) >= 0 else { throw SocketFailure("UDP 재시작 정리 설정") }
         } catch {
             close(fd)
             throw error

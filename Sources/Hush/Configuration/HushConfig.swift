@@ -10,4 +10,6 @@ enum HushConfig {
     static let messageTransmissionCount = 3
     static let messageTransmissionDuration: TimeInterval = 1
     static let updateCheckInterval: TimeInterval = 600
+    static let updateManifestURL: URL? = nil
+    static let updateSigningPublicKeyBase64: String? = nil
 }

@@ -62,4 +62,22 @@ python3 Tools/test_cli.py --binary "$(swift build --show-bin-path)/Hush" \
 
 이 검증은 실제 PTY의 비밀번호 숨김·재인증, UDP 반복 송신과 수신 중복 제거, heartbeat 경계, 터미널 종료 후 저장, 기록 복원, 잘못된 비밀번호·중복 실행·파이프 입력 거부, 터미널 입력 모드 복원을 확인한다. 실제 사내망 두 Mac 사이의 브로드캐스트와 iTerm2·VS Code에서의 사용 검증은 별도로 수행해야 한다.
 
-자동 업데이트는 다음 구현 단위이며 실제 배포 URL은 아직 없다.
+## 자동 업데이트
+
+실제 배포 URL은 아직 없으므로 기본 빌드에서는 자동 확인을 하지 않는다. 배포할 때 `HushConfig.updateManifestURL`에 매니페스트 HTTP(S) 주소, `updateSigningPublicKeyBase64`에 서명 공개키를 함께 설정해 다시 빌드한다. 서명 개인키는 프로그램에 포함하지 않는다.
+
+비밀번호 입력 후 처음 한 번, 이후 10분마다 확인하며 새 버전은 검증 후 즉시 교체·재시작한다. 채팅과 수신기가 같은 실행 파일을 사용하면 두 역할 모두 새 버전으로 재시작하고 각자 비밀번호를 다시 요청한다. 닫힌 터미널의 수신기는 재인증할 수 없으므로 새 터미널에서 다시 실행해야 한다. 재인증 전에는 기록을 저장하지 않으며 이 구간의 메시지는 누락될 수 있다. 실행 파일이 있는 디렉터리는 사용자가 쓸 수 있어야 하며 이전 파일은 `Hush.previous`에 보관한다.
+
+배포 도구와 실제 업데이트 통합 테스트는 다음 명령으로 실행한다. 위의 `PacketFixture`를 먼저 빌드한다.
+
+```sh
+swiftc -parse-as-library Sources/Hush/Updates/Domain/ReleaseVersion.swift \
+  Sources/Hush/Updates/Domain/ReleaseDescriptor.swift \
+  Sources/Hush/Updates/Infrastructure/ReleaseManifest.swift \
+  Tools/ReleaseTool.swift -o .build/ReleaseTool
+python3 Tools/test_release_tool.py --tool .build/ReleaseTool
+python3 Tools/test_updates.py --release-tool .build/ReleaseTool \
+  --fixture .build/PacketFixture --interface en0
+```
+
+업데이트 테스트는 임시 소스 복사본에 로컬 HTTP 주소와 임시 공개키를 설정해 두 버전을 빌드한다. 실제 작업 소스의 배포 설정과 개인 기록은 변경하지 않는다.

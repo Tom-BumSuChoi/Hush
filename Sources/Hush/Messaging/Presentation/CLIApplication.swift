@@ -6,6 +6,7 @@ nonisolated(unsafe) private var shutdownRequested = false
 
 enum CLIApplication {
     static func run(_ options: CLIOptions) throws {
+        let updater = try UpdateRuntime.configured()
         let interfaces = try NetworkInterface.discover()
         let selected = try options.networkInterface(from: interfaces)
         let store = try TerminalPassword.unlockHistory(at: options.historyDirectory)
@@ -39,6 +40,14 @@ enum CLIApplication {
         while !shutdownRequested && (!quitting || sender.hasPending) {
             let uptime = ProcessInfo.processInfo.systemUptime
             let now = Date()
+            var installed: InstalledExecutable?
+            do { installed = try updater?.poll(at: uptime) }
+            catch { view?.notice("업데이트 확인·적용 실패: \(error)") }
+            if let installed {
+                view?.notice("새 버전 적용 완료. 재시작 후 비밀번호를 다시 입력하세요")
+                terminal?.restore()
+                try ProcessRestart.restart(installed, arguments: Array(CommandLine.arguments.dropFirst()))
+            }
             if session.shouldSendHeartbeat(at: now), !quitting {
                 do {
                     try socket.send(codec.encode(.heartbeat), to: selected.broadcastIP, port: options.port)

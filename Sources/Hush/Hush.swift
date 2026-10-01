@@ -12,7 +12,7 @@ struct Hush {
             case .chat, .receive: try CLIApplication.run(options)
             }
         } catch {
-            FileHandle.standardError.write(Data("Hush: \(error)\n".utf8))
+            try? FileHandle.standardError.write(contentsOf: Data("Hush: \(error)\n".utf8))
             exit(1)
         }
     }
