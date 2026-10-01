@@ -19,7 +19,8 @@ Sources/Hush/
 └── Messaging/
     ├── Domain/
     │   ├── MessageIdentity.swift
-    │   └── MessageDeduplicator.swift
+    │   ├── MessageDeduplicator.swift
+    │   └── MessageTransmissionPlan.swift
     ├── Application/
     ├── Infrastructure/
     └── Presentation/
@@ -36,7 +37,8 @@ Tests/HushTests/
 └── Messaging/
     ├── Domain/
     │   ├── MessageIdentityTests.swift
-    │   └── MessageDeduplicatorTests.swift
+    │   ├── MessageDeduplicatorTests.swift
+    │   └── MessageTransmissionPlanTests.swift
     ├── Application/
     ├── Infrastructure/
     └── Presentation/
@@ -61,6 +63,8 @@ Tests/HushTests/
 현재 `peerOfflineThreshold`는 마지막 heartbeat 수신 후 오프라인으로 판단하는 기준이며, 단위는 초이고 값은 12이다.
 
 `heartbeatInterval`은 마지막 heartbeat 송신 후 다음 송신까지의 간격이며, 단위는 초이고 값은 3이다. 첫 heartbeat는 채팅 시작 즉시 송신한다.
+
+`messageTransmissionCount`는 메시지 한 건의 송신 횟수이며 값은 3이다. `messageTransmissionDuration`은 첫 송신부터 마지막 송신까지의 기간이며, 단위는 초이고 값은 1이다. 세 번의 송신은 시작 시점, 0.5초 후, 1초 후에 계획한다.
 
 ## 3. TDD와 테스트 스타일
 
@@ -91,4 +95,6 @@ Tests/HushTests/
 
 내용 해시 생성, 전송 타임스탬프 형식, 동일 시각·동일 내용의 별도 메시지 구분은 아직 결정하지 않았다.
 
-현재 구현은 전달받은 값으로 온라인 상태, 송신 시점, 메시지 식별값과 중복 여부를 판단하는 도메인 규칙이다. 실제 송수신과 암호화 저장, CLI 연결은 이후 단계에서 구현한다.
+`Messaging/Domain/MessageTransmissionPlan.swift`와 대응하는 테스트에 메시지 한 건의 세 번 반복 송신 계획이 구현되어 있다. 송신 시작 시각을 기준으로 1초 동안 균등한 간격으로 세 전송 항목을 만들며, 각 항목은 같은 메시지 식별값을 유지한다. 이 객체는 예정 시각을 계산하며, 실제 대기나 패킷 송신은 수행하지 않는다.
+
+현재 구현은 온라인 상태, heartbeat 송신 시점, 메시지 식별값과 중복 여부, 반복 송신 계획을 다루는 도메인 규칙이다. 실제 송수신과 암호화 저장, CLI 연결은 이후 단계에서 구현한다.
