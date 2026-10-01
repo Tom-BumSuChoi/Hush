@@ -9,7 +9,7 @@ swift build -c release
 swift build -c release --show-bin-path
 ```
 
-두 Mac에는 동일한 `HushConfig.communicationKey`가 포함된 실행 파일을 배포한다. 아래 명령은 빌드 경로의 실행 파일을 직접 사용한다.
+두 Mac에는 동일한 `HushConfig.communicationKey`가 포함된 실행 파일을 배포한다. Apple Silicon·Intel 공용 파일과 서명 배포 절차는 [배포](deployment.md)를 따른다. 아래 명령은 빌드 경로의 실행 파일을 직접 사용한다.
 
 ## 채팅
 
