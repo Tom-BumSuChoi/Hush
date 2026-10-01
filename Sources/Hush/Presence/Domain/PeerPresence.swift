@@ -1,7 +1,6 @@
 import Foundation
 
 struct PeerPresence {
-    private static let offlineThreshold: TimeInterval = 12
     private var lastHeartbeatReceivedAt: Date?
 
     mutating func receiveHeartbeat(at receivedAt: Date) {
@@ -13,6 +12,6 @@ struct PeerPresence {
             return false
         }
 
-        return now.timeIntervalSince(lastHeartbeatReceivedAt) < Self.offlineThreshold
+        return now.timeIntervalSince(lastHeartbeatReceivedAt) < HushConfig.peerOfflineThreshold
     }
 }
