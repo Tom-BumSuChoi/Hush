@@ -1,6 +1,6 @@
 import Foundation
 
-struct MessageIdentity: Equatable {
+struct MessageIdentity: Hashable {
     let senderIP: String
     let createdAt: Date
     let contentHash: String

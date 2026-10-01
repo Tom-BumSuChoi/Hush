@@ -18,7 +18,8 @@ Sources/Hush/
 │   └── Presentation/
 └── Messaging/
     ├── Domain/
-    │   └── MessageIdentity.swift
+    │   ├── MessageIdentity.swift
+    │   └── MessageDeduplicator.swift
     ├── Application/
     ├── Infrastructure/
     └── Presentation/
@@ -34,7 +35,8 @@ Tests/HushTests/
 │   └── Presentation/
 └── Messaging/
     ├── Domain/
-    │   └── MessageIdentityTests.swift
+    │   ├── MessageIdentityTests.swift
+    │   └── MessageDeduplicatorTests.swift
     ├── Application/
     ├── Infrastructure/
     └── Presentation/
@@ -83,6 +85,10 @@ Tests/HushTests/
 
 `Messaging/Domain/MessageIdentity.swift`와 대응하는 테스트에 메시지 식별값 비교가 구현되어 있다. 발신 IP, 최초 생성 시각, 내용 해시를 불변 값으로 보관하며, 세 값이 모두 같아야 같은 메시지로 판별한다. IP와 내용 해시는 문자열로, 생성 시각은 `Date`로 전달받는다.
 
-내용 해시 생성, 전송 타임스탬프 형식, 중복 식별값의 보관·만료·재시작 처리 정책은 아직 결정하지 않았다.
+`Messaging/Domain/MessageDeduplicator.swift`는 식별값을 `Set`으로 관리하며, `register(_:)`는 처음 등록한 식별값에만 `true`를 반환한다. `MessageIdentity`는 세 필드의 동등성을 유지하면서 `Hashable`을 따른다.
 
-현재 구현은 전달받은 값으로 온라인 상태, 송신 시점, 메시지 식별값을 판단하는 도메인 규칙이다. 실제 송수신과 CLI 연결은 이후 단계에서 구현한다.
+중복 판별 정보는 대화 기록을 보관하는 동안 유지한다. 재시작 시 비밀번호로 기록을 연 뒤 기존 메시지 식별값을 `knownIdentities`에 전달해 중복 판별 상태를 복원한다. 현재 테스트는 식별값을 직접 전달하는 도메인 복원을 검증하며, 실제 파일 저장과 재시작 흐름은 이후 단계에서 연결한다.
+
+내용 해시 생성, 전송 타임스탬프 형식, 동일 시각·동일 내용의 별도 메시지 구분은 아직 결정하지 않았다.
+
+현재 구현은 전달받은 값으로 온라인 상태, 송신 시점, 메시지 식별값과 중복 여부를 판단하는 도메인 규칙이다. 실제 송수신과 암호화 저장, CLI 연결은 이후 단계에서 구현한다.
