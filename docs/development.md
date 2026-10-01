@@ -141,3 +141,5 @@ Tests/HushTests/
 ## 8. 업데이트 규칙
 
 `Updates/Domain/ReleaseVersion`은 안정 버전의 `주.부.패치` 세 숫자를 비교하며, 선행 0과 prerelease 등 지원하지 않는 형식을 거부한다. `UpdateSchedule`은 실행 시 최초 확인과 마지막 확인 이후 600초 경계를 시스템 단조 시각으로 판단한다. 확인 주기는 `HushConfig.updateCheckInterval`에 둔다. 다운로드·검증·교체·재시작은 이후 작업 단위에서 연결한다.
+
+`ReleaseManifest`는 JSON 안의 base64 `payload`와 `signature`를 받아 신뢰한 Curve25519 서명 공개키로 원본 payload의 서명을 검증한다. 서명한 payload에는 형식 버전 1, 프로그램 버전, HTTP(S) 다운로드 주소와 파일 SHA-256을 담는다. 서명 검증 후에만 정보를 해석하고, 다운로드한 파일의 해시를 별도로 검증한다. 다른 서명자·변조된 정보·해시가 다른 파일은 교체 대상으로 받아들이지 않는다.
