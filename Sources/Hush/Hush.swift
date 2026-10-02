@@ -10,6 +10,7 @@ struct Hush {
             case .help: print(CLIOptions.help)
             case .version: print(HushConfig.version)
             case .menu: try CLIApplication.runMenu(options)
+            case .upgrade: try UpgradeCommand.run()
             case .chat, .receive: try CLIApplication.run(options)
             }
         } catch {

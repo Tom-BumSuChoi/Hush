@@ -6,7 +6,8 @@ struct CLIError: Error, CustomStringConvertible {
 }
 
 struct CLIOptions {
-    enum Command { case menu, chat, receive, help, version }
+    // 사용자에게 안내하는 명령은 메뉴와 update·upgrade뿐이며, 나머지는 업데이트 검증과 테스트용입니다.
+    enum Command { case menu, upgrade, chat, receive, help, version }
     let command: Command
     let interfaceName: String?
     let port: UInt16
@@ -21,9 +22,10 @@ struct CLIOptions {
         var index = 0
         if let first = arguments.first, !first.hasPrefix("-") {
             switch first {
+            case "update", "upgrade": command = .upgrade
             case "chat": command = .chat
             case "receive": command = .receive
-            default: throw CLIError("알 수 없는 명령: \(first)")
+            default: throw CLIError("알 수 없는 명령: \(first)\n\(Self.help)")
             }
             index += 1
         }
@@ -35,7 +37,7 @@ struct CLIOptions {
                 command = .version
             } else {
                 guard ["--interface", "--port", "--history-directory"].contains(argument) else {
-                    throw CLIError("알 수 없는 옵션: \(argument)")
+                    throw CLIError("알 수 없는 옵션: \(argument)\n\(Self.help)")
                 }
                 index += 1
                 guard index < arguments.count, !arguments[index].isEmpty, !arguments[index].hasPrefix("--") else {
@@ -71,19 +73,13 @@ struct CLIOptions {
         if sorted.count == 1 { return first }
         if let wifi = sorted.first(where: { preference.wifiNames.contains($0.name) }) { return wifi }
         if let primary = sorted.first(where: { $0.name == preference.primaryName }) { return primary }
-        throw CLIError("네트워크를 자동으로 정할 수 없습니다. --interface로 선택하세요: \(sorted.map(\.name).joined(separator: ", "))")
+        throw CLIError("네트워크를 자동으로 정할 수 없습니다 (연결된 네트워크: \(sorted.map(\.name).joined(separator: ", ")))")
     }
 
     static let help = """
-    사용법: hush [chat|receive] [옵션]
-      (명령 없음)  비밀번호 입력 후 메뉴에서 채팅·기록 보기·수신기 선택
-      chat       비밀번호 입력 후 대화 조회와 채팅
-      receive    비밀번호 입력 후 화면 없이 메시지 수신·저장
-      --interface 이름       사용할 네트워크 (기본: Wi-Fi, 없으면 기본 경로 네트워크)
-      --port 번호            UDP 포트 (기본: \(HushConfig.udpPort))
-      --history-directory 경로  개인 기록 위치
-      --help                 도움말
-      --version              프로그램 버전
-    채팅 종료: /quit 또는 Ctrl-D
+    사용법:
+      hush          채팅과 기록 보기 메뉴
+      hush update   새 버전 확인 후 설치
+      hush upgrade  hush update와 같음
     """
 }

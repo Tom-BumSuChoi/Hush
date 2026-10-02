@@ -12,6 +12,28 @@ struct CLIOptionsTests {
         #expect(options.port == HushConfig.udpPort)
     }
 
+    @Test func update와_upgrade는_같은_업데이트_명령이다() throws {
+        // Given: 사용자가 update 또는 upgrade를 입력했습니다.
+        // When: 명령행을 해석합니다.
+        let update = try CLIOptions(arguments: ["update"])
+        let upgrade = try CLIOptions(arguments: ["upgrade"])
+        // Then: 둘 다 새 버전 확인 후 설치하는 명령입니다.
+        #expect(update.command == .upgrade)
+        #expect(upgrade.command == .upgrade)
+    }
+
+    @Test func 도움말에는_메뉴와_업데이트_명령만_안내한다() {
+        // Given: 사용자에게 보이는 도움말이 있습니다.
+        let help = CLIOptions.help
+        // When: 안내하는 명령을 확인합니다.
+        // Then: hush, hush update, hush upgrade만 보이고 테스트·검증용 옵션은 보이지 않습니다.
+        #expect(help.contains("hush update"))
+        #expect(help.contains("hush upgrade"))
+        for hidden in ["chat", "receive", "--interface", "--port", "--history-directory", "--version", "--help"] {
+            #expect(!help.contains(hidden))
+        }
+    }
+
     @Test func 채팅_역할을_명시할_수_있다() throws {
         // Given: 채팅 역할을 명령으로 지정했습니다.
         // When: 명령행을 해석합니다.

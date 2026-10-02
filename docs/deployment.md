@@ -59,7 +59,7 @@ glab api --hostname gitlab.local -X PUT -H 'Content-Type: application/octet-stre
   projects/11/packages/generic/hush/latest/manifest.json --input .build/distribution/manifest.json
 ```
 
-파일은 압축하지 않은 Mach-O 실행 파일이며 파일을 변경했다면 매니페스트도 다시 서명한다. 채팅을 중계하는 서버는 필요하지 않으며 GitLab은 업데이트 파일만 제공한다.
+실행 중인 Hush는 10분 이내에 새 버전을 받으며, 사용자는 `hush update`로 바로 받을 수 있다. 파일은 압축하지 않은 Mach-O 실행 파일이며 파일을 변경했다면 매니페스트도 다시 서명한다. 채팅을 중계하는 서버는 필요하지 않으며 GitLab은 업데이트 파일만 제공한다.
 
 ## 최초 설치와 복구
 

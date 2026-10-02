@@ -156,6 +156,8 @@ Hush의 터미널 출력은 `TerminalChatView.styled`로 초록색을 적용하�
 
 `Tools/ReleaseTool.swift`는 배포 서명 키 생성, 실행 파일의 해시를 포함한 매니페스트 서명, 공개키와 파일의 검증을 수행한다. 서명 개인키는 별도 0600 파일로 만들며 기존 키 파일을 덮어쓰지 않는다. 프로그램에 배포할 신뢰 정보는 공개키이며 서명 개인키를 내장하지 않는다. `Tools/test_release_tool.py`로 실제 키 생성·서명·검증 및 변조 거부 사이클을 확인한다.
 
+`hush update`·`hush upgrade`는 `UpgradeCommand`가 `UpdateRuntime.upgradeNow`로 확인부터 설치까지 기다려 실행하며, 자동 업데이트와 같은 서명·해시·Mach-O·버전 검증을 거친다. 기록과 소켓을 열지 않으므로 비밀번호를 요구하지 않고, 실행 중인 Hush는 파일 교체를 감지해 재시작한다. `CLIOptions.help`는 `hush`와 두 업데이트 명령만 안내하며, `chat`·`receive`와 `--interface`·`--port`·`--history-directory`·`--help`·`--version`은 업데이트 검증과 통합 테스트를 위해 동작만 유지한다.
+
 `UpdateRuntime`은 인증을 마친 CLI 이벤트 루프에서 최초·주기 확인을 시작하며 HTTP 작업을 별도 작업으로 수행한다. 검증한 새 버전은 즉시 설치하고 `ProcessRestart`의 `execv`로 같은 실행 인자를 유지해 재시작한다. 다른 역할이 실행 파일을 먼저 바꿔도 파일 식별값과 버전을 확인해 재시작한다. 터미널 입력 모드는 복원하고 소켓·역할 잠금은 exec 시 닫으며, 기존 메모리의 기록용 키는 새 프로세스에 전달하지 않는다.
 
 배포 URL과 서명 공개키는 `HushConfig.updateManifestURL`·`updateSigningPublicKeyBase64`에 함께 설정해 다시 빌드한다. 현재 사내 GitLab `bfit-daily/hush` 프로젝트의 범용 패키지 저장소 주소와 배포 서명 공개키가 설정되어 있으며, 배포 서버 구성은 [배포](deployment.md)를 따른다. `Tools/test_updates.py`는 임시 설정과 실제 두 버전의 release 실행 파일로 다운로드 대기 중 채팅, 서명 다운로드, 두 역할 재시작, 비밀번호 재입력 전 저장 중단, 기록 유지, 소켓 정리와 변조 거부를 검증한다. 재인증 후 수신기만 실행 중인 상태에서 기존 형식의 메시지를 받아 저장을 재개하고 반복 패킷은 한 건으로 남기는 것도 확인한다.

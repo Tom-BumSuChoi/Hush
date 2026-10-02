@@ -64,6 +64,26 @@ final class UpdateRuntime: @unchecked Sendable {
         return nil
     }
 
+    // 수동 업데이트는 확인부터 설치까지 기다린 뒤 설치한 버전을 반환하며, 이미 최신이면 nil을 반환합니다.
+    func upgradeNow() throws -> String? {
+        let finished = DispatchSemaphore(value: 0)
+        Task.detached { [self] in
+            let result: Result<DownloadedRelease?, any Error>
+            do { result = .success(try await checker.check()) }
+            catch { result = .failure(error) }
+            lock.withLock { completed = result }
+            finished.signal()
+        }
+        finished.wait()
+        let outcome = lock.withLock { () -> Result<DownloadedRelease?, any Error>? in
+            defer { completed = nil }
+            return completed
+        }
+        guard let release = try outcome?.get() else { return nil }
+        let installed = try ExecutableInstaller(destination: destination).install(release)
+        return installed.backupURL == nil ? nil : release.descriptor.version
+    }
+
     private func identity() throws -> FileIdentity {
         var info = stat()
         guard stat(destination.path, &info) == 0 else { throw SocketFailure("실행 파일 변경 조회") }
