@@ -74,6 +74,12 @@ enum Inbox {
     static func url(in directory: URL) -> URL { directory.appendingPathComponent("inbox.jsonl") }
     static func keyURL(in directory: URL) -> URL { directory.appendingPathComponent("inbox-key.json") }
 
+    // 수신함의 한 줄은 아직 기록에 합쳐지지 않은 메시지 하나이므로, 복호화 없이 줄 수로 안 읽은 건수를 셉니다.
+    static func pendingCount(in directory: URL) -> Int {
+        guard let data = try? Data(contentsOf: url(in: directory)) else { return 0 }
+        return data.split(separator: UInt8(ascii: "\n")).count
+    }
+
     static func readKeyFile(in directory: URL) throws -> KeyFile {
         let file = try JSONDecoder().decode(KeyFile.self, from: Data(contentsOf: keyURL(in: directory)))
         guard file.version == 1 else { throw InboxError.missingKey }

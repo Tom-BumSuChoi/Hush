@@ -12,6 +12,8 @@ struct CLIOptions {
     let interfaceName: String?
     let port: UInt16
     let historyDirectory: URL
+    // 로그인 항목으로 실행한 수신기만 메뉴 막대 표시를 켭니다.
+    let menuBar: Bool
 
     static let defaultHistoryDirectory = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Library/Application Support/Hush", isDirectory: true)
@@ -21,6 +23,7 @@ struct CLIOptions {
         var interface: String?
         var port = HushConfig.udpPort
         var directory = Self.defaultHistoryDirectory
+        var menuBar = false
         var index = 0
         if let first = arguments.first, !first.hasPrefix("-") {
             switch first {
@@ -35,6 +38,8 @@ struct CLIOptions {
             let argument = arguments[index]
             if argument == "--help" || argument == "-h" {
                 command = .help
+            } else if argument == "--menu-bar" {
+                menuBar = true
             } else if argument == "--version" {
                 command = .version
             } else {
@@ -59,6 +64,7 @@ struct CLIOptions {
         interfaceName = interface
         self.port = port
         historyDirectory = directory
+        self.menuBar = menuBar
     }
 
     func networkInterface(from interfaces: [NetworkInterface], preference: NetworkPreference) throws -> NetworkInterface {

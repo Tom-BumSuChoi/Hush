@@ -1,3 +1,4 @@
+import AppKit
 import CryptoKit
 import Darwin
 import Foundation
@@ -135,6 +136,33 @@ enum CLIApplication {
 
     // 백그라운드 수신기는 비밀번호와 터미널 없이 실행하며, 받은 메시지를 공개키로 봉인해 수신함에 쌓기만 합니다.
     private static func runReceiver(options: CLIOptions, updater: UpdateRuntime?) throws {
+        guard options.menuBar else { return try receiveLoop(options: options, updater: updater, onUnread: nil) }
+        // 메뉴 막대는 메인 스레드에서 그리므로 수신 루프는 별도 스레드에서 실행하고, 루프가 끝나면 프로세스를 끝냅니다.
+        _ = try InboxWriter(directory: options.historyDirectory)
+        MainActor.assumeIsolated {
+            NSApplication.shared.setActivationPolicy(.accessory)
+            let executable = Bundle.main.executableURL?.resolvingSymlinksInPath()
+            MenuBarIndicator.current = MenuBarIndicator {
+                guard let executable else { return }
+                do { try TerminalLauncher.openHush(executable: executable, directory: options.historyDirectory) }
+                catch { log("Hush 열기 실패: \(error)") }
+            }
+        }
+        Thread {
+            do {
+                try receiveLoop(options: options, updater: updater) { unread in
+                    Task { @MainActor in MenuBarIndicator.current?.show(unread: unread) }
+                }
+                exit(0)
+            } catch {
+                log("수신기 종료: \(error)")
+                exit(1)
+            }
+        }.start()
+        MainActor.assumeIsolated { NSApplication.shared.run() }
+    }
+
+    private static func receiveLoop(options: CLIOptions, updater: UpdateRuntime?, onUnread: ((Int) -> Void)?) throws {
         let store = try InboxWriter(directory: options.historyDirectory)
         let lease = try RoleLease(directory: options.historyDirectory, role: "receive")
         defer { withExtendedLifetime(lease) {} }
@@ -145,9 +173,15 @@ enum CLIApplication {
         log("수신 중 (PID \(getpid())): 포트 \(options.port), 수신함: \(store.url.path)")
         var ownIPs: Set<String> = []
         var lastDiscovery: TimeInterval?
+        var badge = UnreadBadge()
+        var lastPendingCheck: TimeInterval?
         while !shutdownRequested {
             let uptime = ProcessInfo.processInfo.systemUptime
             try checkForUpdates(updater, at: uptime, terminal: nil, view: nil)
+            if let onUnread, lastPendingCheck.map({ uptime - $0 >= 0.5 }) ?? true {
+                if let unread = badge.update(pending: Inbox.pendingCount(in: options.historyDirectory), at: uptime) { onUnread(unread) }
+                lastPendingCheck = uptime
+            }
             // 네트워크가 바뀌어도 내 메시지를 거르도록 내 IP 목록을 주기적으로 다시 읽습니다.
             if lastDiscovery.map({ uptime - $0 >= 5 }) ?? true {
                 ownIPs = Set(((try? NetworkInterface.discover()) ?? []).map(\.ip))

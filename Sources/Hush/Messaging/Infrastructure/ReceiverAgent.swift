@@ -22,7 +22,7 @@ enum ReceiverAgent {
     static func plist(executable: URL, logURL: URL = logURL) throws -> Data {
         let contents: [String: Any] = [
             "Label": label,
-            "ProgramArguments": [executable.path, "receive"],
+            "ProgramArguments": [executable.path, "receive", "--menu-bar"],
             "RunAtLoad": true,
             "KeepAlive": true,
             "StandardOutPath": logURL.path,

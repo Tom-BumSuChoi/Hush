@@ -44,10 +44,12 @@ struct InboxStoreTests {
         let writer = try InboxWriter(directory: directory)
         try writer.append(existing)
         try writer.append(fresh)
+        #expect(Inbox.pendingCount(in: directory) == 2)
         // When: 비밀번호로 기록을 다시 열어 조회합니다.
         let records = try HistoryStore(directory: directory, password: password).load()
         // Then: 새 메시지만 상대 메시지로 추가되고 수신함은 비워집니다.
         #expect(records == [existing, fresh])
+        #expect(Inbox.pendingCount(in: directory) == 0)
         #expect(try Data(contentsOf: writer.url).isEmpty)
     }
 

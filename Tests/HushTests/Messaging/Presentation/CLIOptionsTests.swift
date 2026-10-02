@@ -29,7 +29,7 @@ struct CLIOptionsTests {
         // Then: hush, hush update, hush upgrade만 보이고 테스트·검증용 옵션은 보이지 않습니다.
         #expect(help.contains("hush update"))
         #expect(help.contains("hush upgrade"))
-        for hidden in ["chat", "receive", "--interface", "--port", "--history-directory", "--version", "--help"] {
+        for hidden in ["chat", "receive", "--interface", "--port", "--history-directory", "--version", "--help", "--menu-bar"] {
             #expect(!help.contains(hidden))
         }
     }
@@ -51,6 +51,8 @@ struct CLIOptionsTests {
         #expect(options.interfaceName == "en1")
         #expect(options.port == 49_001)
         #expect(options.historyDirectory.path == "/private/tmp/hush-test")
+        #expect(!options.menuBar)
+        #expect(try CLIOptions(arguments: ["receive", "--menu-bar"]).menuBar)
     }
 
     @Test func 잘못된_옵션과_포트와_비밀번호_인자는_거부한다() {
