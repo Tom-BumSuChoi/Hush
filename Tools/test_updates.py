@@ -123,13 +123,33 @@ def main():
                     time.sleep(0.05)
                 raise AssertionError(f"기록 수 대기 실패: {count}")
 
-            # Given: 서명한 새 버전의 HTTP 응답을 기다리며 기존 두 역할이 실행 중입니다.
-            receiver = launch("receive")
-            receiver.unlock(password, first=True)
-            receiver.expect("수신 중")
+            def udp_sockets(pid):
+                return subprocess.run(["lsof", "-a", "-n", "-P", "-p", str(pid), "-iUDP"], capture_output=True).stdout
+
+            def send(content, created_at, count=3):
+                incoming = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                incoming.bind(("127.0.0.1", 0))
+                try:
+                    packet = base64.b64decode(subprocess.check_output([fixture, "message", content, created_at]))
+                    for _ in range(count):
+                        incoming.sendto(packet, ("127.0.0.1", port))
+                finally:
+                    incoming.close()
+
+            inbox = history_directory / "inbox.jsonl"
+
+            def wait_for_inbox():
+                deadline = time.monotonic() + 5
+                while not (inbox.exists() and inbox.stat().st_size > 0):
+                    assert time.monotonic() < deadline, "수신함 저장 대기 실패"
+                    time.sleep(0.05)
+
+            # Given: 서명한 새 버전의 HTTP 응답을 기다리며 채팅과 비밀번호 없는 수신기가 실행 중입니다.
             chat = launch()
-            chat.unlock(password)
+            chat.unlock(password, first=True)
             chat.expect("내 IP")
+            receiver = launch("receive")
+            receiver.expect("수신 중")
             chat.send("업데이트 이전 기록\r")
             chat.expect("업데이트 이전 기록")
             wait_for_history(1)
@@ -139,42 +159,27 @@ def main():
             # When: 새 버전 응답을 제공하면 두 역할이 같은 실행 파일로 즉시 재시작합니다.
             server.ready.set()
             chat.expect("개인 비밀번호: ", timeout=25)
-            receiver.expect("개인 비밀번호: ", timeout=25)
+            receiver.expect("수신 중", timeout=25)
             assert subprocess.check_output([str(installed), "--version"]).decode().strip() == "0.2.0"
             assert subprocess.check_output([str(installed) + ".previous", "--version"]).decode().strip() == "0.1.0"
-            # Then: 이전 키로 잠금을 유지하지 않으며 인증 전에는 UDP·기록 저장을 진행하지 않습니다.
+            # Then: 채팅은 이전 키를 유지하지 않고 인증 전에는 소켓·기록을 열지 않으며, 수신기는 비밀번호 없이 수신을 이어갑니다.
             assert (history_directory / "history.json").read_bytes() == before
-            probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            probe.bind(("0.0.0.0", port))
-            probe.close()
-            incoming = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            incoming.bind(("127.0.0.1", 0))
-            try:
-                locked_packet = base64.b64decode(subprocess.check_output([fixture, "message", "재인증 이전 수신", "2000"]))
-                incoming.sendto(locked_packet, ("127.0.0.1", port))
-            finally:
-                incoming.close()
+            assert udp_sockets(chat.pid) == b"", "인증 전 채팅의 UDP 소켓"
+            assert "비밀번호".encode() not in receiver.output, "재시작한 수신기의 비밀번호 요청"
+            send("재인증 이전 수신", "2000", count=1)
+            wait_for_inbox()
             chat.send(password + "\n")
-            receiver.send(password + "\n")
             chat.expect("Hush 0.2.0")
             chat.expect("업데이트 이전 기록")
-            receiver.expect("수신 중")
+            chat.expect("재인증 이전 수신")
             assert password.encode() not in chat.output
-            assert password.encode() not in receiver.output
             chat.send("/quit\r")
             assert chat.wait() == 0
-            # When: 재인증한 새 버전 수신기에 기존 형식의 메시지를 반복 송신합니다.
-            incoming = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            incoming.bind(("127.0.0.1", 0))
-            try:
-                packet = base64.b64decode(subprocess.check_output([fixture, "message", "업데이트 이후 수신", "2001"]))
-                for _ in range(3):
-                    incoming.sendto(packet, ("127.0.0.1", port))
-                records = wait_for_history(2)
-            finally:
-                incoming.close()
-            # Then: 수신기 단독으로 저장을 재개하며 잠금 중 패킷은 저장되지 않습니다.
-            assert [record["message"]["content"] for record in records] == ["업데이트 이전 기록", "업데이트 이후 수신"]
+            # When: 수신기만 실행 중일 때 기존 형식의 메시지를 반복 송신합니다.
+            send("업데이트 이후 수신", "2001")
+            records = wait_for_history(3)
+            # Then: 채팅 재인증을 기다리는 동안의 메시지까지 수신기가 한 건씩 저장합니다.
+            assert [record["message"]["content"] for record in records] == ["업데이트 이전 기록", "재인증 이전 수신", "업데이트 이후 수신"]
             assert records[-1]["message"]["identity"]["senderIP"] == "127.0.0.1"
             assert records[-1]["isOutgoing"] is False
             receiver.close()
@@ -195,41 +200,31 @@ def main():
             tampered.send("/quit\r")
             assert tampered.wait() == 0
 
-            # Given: 인증한 수신기가 터미널을 닫은 채 새 버전 응답을 기다립니다.
+            # Given: 비밀번호 없이 실행한 수신기가 터미널을 닫은 채 새 버전 응답을 기다립니다.
             server.ready.clear()
             server.binary = new.read_bytes()
             detached = launch("receive")
-            detached.unlock(password)
             detached.expect("수신 중")
             os.close(detached.fd)
             detached.fd = None
             assert os.waitpid(detached.pid, os.WNOHANG)[0] == 0
             # When: 터미널이 없는 수신기에 업데이트를 제공합니다.
             server.ready.set()
-            assert detached.wait(timeout=25) == 1
-            # Then: 새 파일로 교체하되 비밀번호를 자동 제공하지 않고 기록을 유지합니다.
-            assert subprocess.check_output([str(installed), "--version"]).decode().strip() == "0.2.0"
+            deadline = time.monotonic() + 25
+            while subprocess.check_output([str(installed), "--version"]).decode().strip() != "0.2.0":
+                assert time.monotonic() < deadline, "터미널 없는 수신기의 업데이트 대기 실패"
+                time.sleep(0.2)
+            # Then: 새 파일로 교체한 뒤 비밀번호 없이 같은 프로세스로 수신을 이어가고 기존 기록을 유지합니다.
             assert (history_directory / "history.json").read_bytes() == before
-            restored = launch("receive")
-            restored.expect("개인 비밀번호: ")
-            probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            probe.bind(("0.0.0.0", port))
-            probe.close()
-            restored.send(password + "\n")
-            restored.expect("수신 중")
-            incoming = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            incoming.bind(("127.0.0.1", 0))
-            try:
-                packet = base64.b64decode(subprocess.check_output([fixture, "message", "새 터미널에서 수신 재개", "2002"]))
-                for _ in range(3):
-                    incoming.sendto(packet, ("127.0.0.1", port))
-                records = wait_for_history(3)
-            finally:
-                incoming.close()
-            assert records[-1]["message"]["content"] == "새 터미널에서 수신 재개"
-            assert password.encode() not in restored.output
-            restored.close()
-            print("PASS: release 버전 교체·HTTP 대기 중 채팅·동시 역할 재시작·키 재인증·소켓 정리·수신 재개·변조 거부·터미널 없는 재시작과 복구")
+            deadline = time.monotonic() + 10
+            while len(history()) != 4:
+                assert time.monotonic() < deadline, "업데이트 후 수신 재개 대기 실패"
+                send("터미널 없이 업데이트 후 수신", "2002", count=1)
+                time.sleep(0.5)
+            assert history()[-1]["message"]["content"] == "터미널 없이 업데이트 후 수신"
+            assert os.waitpid(detached.pid, os.WNOHANG)[0] == 0
+            detached.close()
+            print("PASS: release 버전 교체·HTTP 대기 중 채팅·동시 역할 재시작·채팅 재인증·비밀번호 없는 수신 유지·소켓 정리·변조 거부·터미널 없는 수신기 업데이트")
     finally:
         server.ready.set()
         for app in apps:

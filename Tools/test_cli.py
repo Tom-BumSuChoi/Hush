@@ -162,11 +162,11 @@ def main():
             assert chat.wait() == 0
             assert termios.tcgetattr(chat.fd)[3] & (termios.ECHO | termios.ICANON) == (termios.ECHO | termios.ICANON)
 
-            # Given: 수신기만 실행 중이며 기존 비밀번호로 기록을 열었습니다.
+            # Given: 비밀번호로 연 기록이 있고 수신기만 비밀번호 없이 실행 중입니다.
             receiver = launch(directory, port, role="receive")
             apps.append(receiver)
-            receiver.unlock(password)
             receiver.expect("수신 중")
+            assert "비밀번호".encode() not in receiver.output, "수신기의 비밀번호 요청"
             silence = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             silence.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             silence.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
@@ -179,11 +179,16 @@ def main():
             encrypted = packet("message", "화면 종료 뒤 수신", "1001")
             for _ in range(3):
                 incoming.sendto(encrypted, ("127.0.0.1", port))
+            inbox = directory / "inbox.jsonl"
             end = time.monotonic() + 3
-            while len(history(directory)) != 3 and time.monotonic() < end:
+            while not (inbox.exists() and inbox.stat().st_size > 0) and time.monotonic() < end:
                 select.select([], [], [], 0.05)
-            # Then: 터미널이 없어도 실행 중인 수신기가 한 건을 추가합니다.
+            select.select([], [], [], 0.3)
+            # Then: 터미널이 없어도 실행 중인 수신기가 평문 없이 한 건을 수신함에 쌓고, 비밀번호로 열면 기록에 합칩니다.
+            assert len(inbox.read_bytes().splitlines()) == 1
+            assert "화면 종료 뒤 수신".encode() not in inbox.read_bytes()
             assert len(history(directory)) == 3
+            assert inbox.read_bytes() == b""
             assert os.waitpid(receiver.pid, os.WNOHANG)[0] == 0
 
             # Given: 채팅 화면을 다시 실행했습니다.
@@ -226,7 +231,7 @@ def main():
             assert "터미널에서 직접 실행하세요" in piped.stderr.decode()
             assert not (pipe_directory / "history.json").exists()
             incoming.close()
-            print("PASS: 비밀번호 숨김·재인증·실제 3회 송신·중복 제거·heartbeat·화면 종료 후 수신·복원·중복 실행 방지·터미널 복원")
+            print("PASS: 비밀번호 숨김·재인증·실제 3회 송신·중복 제거·heartbeat·비밀번호 없는 수신기의 암호화 수신함·복원·중복 실행 방지·터미널 복원")
         finally:
             for app in apps:
                 app.close()

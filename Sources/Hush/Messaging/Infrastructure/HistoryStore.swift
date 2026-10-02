@@ -7,8 +7,10 @@ final class HistoryStore: ConversationStore {
     let url: URL
     private let key: SymmetricKey
     private let salt: Data
+    private let inboxKey: Curve25519.KeyAgreement.PrivateKey
     private static let iterations: UInt32 = 600_000
     private static let context = Data("Hush.history.v1".utf8)
+    private static let inboxKeyContext = Data("Hush.inbox-key.v1".utf8)
 
     init(directory: URL, password: String) throws {
         guard !password.isEmpty else { throw HistoryError.emptyPassword }
@@ -16,24 +18,29 @@ final class HistoryStore: ConversationStore {
                                                 attributes: [.posixPermissions: 0o700])
         let url = directory.appendingPathComponent("history.json")
         self.url = url
-        let values = try Self.withLock(at: url) { () -> (SymmetricKey, Data) in
+        let values = try Self.withLock(at: url) { () -> (SymmetricKey, Data, Curve25519.KeyAgreement.PrivateKey) in
             if FileManager.default.fileExists(atPath: url.path) {
                 let archive = try Self.readArchive(at: url)
                 let key = try Self.deriveKey(password: password, salt: archive.salt)
                 _ = try Self.decrypt(archive, using: key)
-                return (key, archive.salt)
+                return (key, archive.salt, try Self.prepareInboxKey(in: directory, key: key))
             }
             let salt = SymmetricKey(size: .bits128).withUnsafeBytes { Data($0) }
             let key = try Self.deriveKey(password: password, salt: salt)
             try Self.write([], key: key, salt: salt, to: url)
-            return (key, salt)
+            return (key, salt, try Self.prepareInboxKey(in: directory, key: key))
         }
         key = values.0
         salt = values.1
+        inboxKey = values.2
     }
 
+    // 기록을 읽을 때 백그라운드 수신기가 쌓은 수신함을 먼저 합칩니다.
     func load() throws -> [RecordedMessage] {
-        try Self.withLock(at: url) { try read() }
+        try Self.withLock(at: url) {
+            try mergeInbox()
+            return try read()
+        }
     }
 
     @discardableResult
@@ -45,6 +52,42 @@ final class HistoryStore: ConversationStore {
             try Self.write(records, key: key, salt: salt, to: url)
             return true
         }
+    }
+
+    private func mergeInbox() throws {
+        let inbox = Inbox.url(in: url.deletingLastPathComponent())
+        guard let size = try? FileManager.default.attributesOfItem(atPath: inbox.path)[.size] as? Int, size > 0 else { return }
+        try Self.withLock(at: inbox) {
+            var records = try read()
+            var changed = false
+            for line in try Data(contentsOf: inbox).split(separator: UInt8(ascii: "\n")) {
+                // 다른 열쇠로 봉인되었거나 손상된 항목은 열 수 없으므로 건너뜁니다.
+                guard let message = try? Inbox.open(Data(line), with: inboxKey),
+                      !records.contains(where: { $0.message.identity == message.identity }) else { continue }
+                records.append(RecordedMessage(message: message, isOutgoing: false))
+                changed = true
+            }
+            if changed { try Self.write(records, key: key, salt: salt, to: url) }
+            guard truncate(inbox.path, 0) == 0 else { throw SocketFailure("수신함 비우기") }
+        }
+    }
+
+    // 수신함 개인키는 기록용 키로 봉인해 보관하며, 열 수 없으면 새 열쇠쌍으로 바꿉니다.
+    private static func prepareInboxKey(in directory: URL, key: SymmetricKey) throws -> Curve25519.KeyAgreement.PrivateKey {
+        if let file = try? Inbox.readKeyFile(in: directory),
+           let box = try? AES.GCM.SealedBox(combined: file.sealedPrivateKey),
+           let raw = try? AES.GCM.open(box, using: key, authenticating: inboxKeyContext),
+           let privateKey = try? Curve25519.KeyAgreement.PrivateKey(rawRepresentation: raw),
+           privateKey.publicKey.rawRepresentation == file.publicKey {
+            return privateKey
+        }
+        let privateKey = Curve25519.KeyAgreement.PrivateKey()
+        guard let sealed = try AES.GCM.seal(privateKey.rawRepresentation, using: key, authenticating: inboxKeyContext).combined else {
+            throw HistoryError.invalidArchive
+        }
+        let file = Inbox.KeyFile(version: 1, publicKey: privateKey.publicKey.rawRepresentation, sealedPrivateKey: sealed)
+        try writeFile(JSONEncoder().encode(file), to: Inbox.keyURL(in: directory))
+        return privateKey
     }
 
     private func read() throws -> [RecordedMessage] {
@@ -71,7 +114,10 @@ final class HistoryStore: ConversationStore {
         let plaintext = try JSONEncoder().encode(records)
         let box = try AES.GCM.seal(plaintext, using: key, authenticating: context)
         guard let sealed = box.combined else { throw HistoryError.invalidArchive }
-        let data = try JSONEncoder().encode(Archive(version: 1, salt: salt, iterations: iterations, sealed: sealed))
+        try writeFile(JSONEncoder().encode(Archive(version: 1, salt: salt, iterations: iterations, sealed: sealed)), to: url)
+    }
+
+    private static func writeFile(_ data: Data, to url: URL) throws {
         let temporary = url.deletingLastPathComponent().appendingPathComponent(".history-\(UUID().uuidString)")
         let fd = open(temporary.path, O_CREAT | O_EXCL | O_WRONLY, 0o600)
         guard fd >= 0 else { throw SocketFailure("기록 임시 파일 생성") }

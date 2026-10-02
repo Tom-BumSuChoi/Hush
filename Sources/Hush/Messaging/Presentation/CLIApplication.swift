@@ -7,11 +7,11 @@ nonisolated(unsafe) private var shutdownRequested = false
 enum CLIApplication {
     static func run(_ options: CLIOptions) throws {
         let updater = try UpdateRuntime.configured()
+        if options.command == .receive { return try runReceiver(options: options, updater: updater) }
         let interfaces = try NetworkInterface.discover()
         let selected = try options.networkInterface(from: interfaces, preference: .current())
         let store = try TerminalPassword.unlockHistory(at: options.historyDirectory)
-        try runRole(isChat: options.command == .chat, options: options, updater: updater,
-            store: store, interfaces: interfaces, selected: selected)
+        try runChat(options: options, updater: updater, store: store, interfaces: interfaces, selected: selected)
     }
 
     static func runMenu(_ options: CLIOptions) throws {
@@ -34,12 +34,15 @@ enum CLIApplication {
             switch choice {
             case .history:
                 guard try readKey(after: { TerminalHistoryView().show(try store.load()) }, until: { $0 }) != nil else { return }
-            case .chat, .receive:
+            case .chat:
                 guard let selected else { continue }
                 do {
-                    try runRole(isChat: choice == .chat, options: options, updater: updater,
-                        store: store, interfaces: interfaces, selected: selected)
+                    try runChat(options: options, updater: updater, store: store, interfaces: interfaces, selected: selected)
                 } catch { menu.notice("\(error)") }
+                if shutdownRequested { return }
+            case .receive:
+                do { try runReceiver(options: options, updater: updater) }
+                catch { menu.notice("\(error)") }
                 if shutdownRequested { return }
             case .quit: return
             }
@@ -71,21 +74,21 @@ enum CLIApplication {
         return nil
     }
 
-    private static func runRole(isChat: Bool, options: CLIOptions, updater: UpdateRuntime?, store: HistoryStore,
+    private static func runChat(options: CLIOptions, updater: UpdateRuntime?, store: HistoryStore,
                                 interfaces: [NetworkInterface], selected: NetworkInterface) throws {
-        let lease = try RoleLease(directory: options.historyDirectory, role: isChat ? "chat" : "receive")
+        let lease = try RoleLease(directory: options.historyDirectory, role: "chat")
         defer { withExtendedLifetime(lease) {} }
-        var session = try ChatSession(role: isChat ? .chat : .backgroundReceiver,
-            localIP: selected.ip, ownIPs: Set(interfaces.map(\.ip)), store: store)
+        var session = try ChatSession(role: .chat, localIP: selected.ip, ownIPs: Set(interfaces.map(\.ip)), store: store)
         let codec = PacketCodec(key: HushConfig.communicationKey)
         let receiver = try UDPTransport(port: options.port)
         let socket = try UDPTransport(port: 0, bindIP: selected.ip)
         var sender = MessageSender { try socket.send($0, to: selected.broadcastIP, port: options.port) }
-        configureSignals(isChat: isChat)
-        let terminal = isChat ? try TerminalMode() : nil
-        defer { terminal?.restore() }
-        let view = isChat ? TerminalChatView() : nil
-        try showInitialScreen(view: view, store: store, network: selected, port: options.port)
+        configureSignals(isChat: true)
+        let terminal = try TerminalMode()
+        defer { terminal.restore() }
+        let view = TerminalChatView()
+        view.notice("Hush \(HushConfig.version) — 내 IP \(selected.ip), /quit으로 종료")
+        for record in try store.load() { view.showMessage(record, isNew: false) }
         var quitting = false
         var lastRefresh: TimeInterval = 0
         var previousStatus = ""
@@ -98,12 +101,12 @@ enum CLIApplication {
                     network: selected, port: options.port, view: view)
             }
             do { try sender.sendDue(at: uptime) }
-            catch { view?.notice("메시지 송신 실패: \(error)") }
+            catch { view.notice("메시지 송신 실패: \(error)") }
             try refreshDisplay(session: &session, at: now, uptime: uptime, view: view,
                 previousStatus: &previousStatus, lastRefresh: &lastRefresh)
             let remaining = sender.nextDeadline.map { max(0, $0 - ProcessInfo.processInfo.systemUptime) } ?? 0.1
             var events = [pollfd(fd: receiver.descriptor, events: Int16(POLLIN), revents: 0)]
-            if isChat && !quitting { events.append(pollfd(fd: STDIN_FILENO, events: Int16(POLLIN), revents: 0)) }
+            if !quitting { events.append(pollfd(fd: STDIN_FILENO, events: Int16(POLLIN), revents: 0)) }
             let result = poll(&events, nfds_t(events.count), Int32(min(remaining * 1_000, 100)))
             if result < 0 {
                 if errno == EINTR { continue }
@@ -112,11 +115,45 @@ enum CLIApplication {
             if events[0].revents & Int16(POLLIN) != 0 {
                 try receivePackets(receiver, codec: codec, session: &session, view: view)
             }
-            if events.count > 1, events[1].revents & Int16(POLLIN | POLLHUP) != 0, let view {
+            if events.count > 1, events[1].revents & Int16(POLLIN | POLLHUP) != 0 {
                 try handleInput(view: view, session: &session, sender: &sender, codec: codec, quitting: &quitting)
             }
         }
-        view?.finish()
+        view.finish()
+    }
+
+    // 백그라운드 수신기는 비밀번호와 터미널 없이 실행하며, 받은 메시지를 공개키로 봉인해 수신함에 쌓기만 합니다.
+    private static func runReceiver(options: CLIOptions, updater: UpdateRuntime?) throws {
+        let store = try InboxWriter(directory: options.historyDirectory)
+        let lease = try RoleLease(directory: options.historyDirectory, role: "receive")
+        defer { withExtendedLifetime(lease) {} }
+        var session = try ChatSession(role: .backgroundReceiver, localIP: "", ownIPs: [], store: store)
+        let codec = PacketCodec(key: HushConfig.communicationKey)
+        let receiver = try UDPTransport(port: options.port)
+        configureSignals(isChat: false)
+        // 터미널이 닫힌 뒤에도 쓰기 오류로 종료되지 않도록 표준 입출력 함수로 출력합니다.
+        print(TerminalChatView.styled("수신 중 (PID \(getpid())): 포트 \(options.port), 수신함: \(store.url.path)"))
+        fflush(stdout)
+        var ownIPs: Set<String> = []
+        var lastDiscovery: TimeInterval?
+        while !shutdownRequested {
+            let uptime = ProcessInfo.processInfo.systemUptime
+            try checkForUpdates(updater, at: uptime, terminal: nil, view: nil)
+            // 네트워크가 바뀌어도 내 메시지를 거르도록 내 IP 목록을 주기적으로 다시 읽습니다.
+            if lastDiscovery.map({ uptime - $0 >= 5 }) ?? true {
+                ownIPs = Set(((try? NetworkInterface.discover()) ?? []).map(\.ip))
+                lastDiscovery = uptime
+            }
+            var event = pollfd(fd: receiver.descriptor, events: Int16(POLLIN), revents: 0)
+            let result = poll(&event, 1, 100)
+            if result < 0 {
+                if errno == EINTR { continue }
+                throw SocketFailure("이벤트 대기")
+            }
+            if event.revents & Int16(POLLIN) != 0 {
+                try receivePackets(receiver, codec: codec, session: &session, view: nil, ignoring: ownIPs)
+            }
+        }
     }
 
     private static func configureSignals(isChat: Bool) {
@@ -126,16 +163,6 @@ enum CLIApplication {
         signal(SIGPIPE, SIG_IGN)
         if isChat { signal(SIGHUP) { _ in shutdownRequested = true } }
         else { signal(SIGHUP, SIG_IGN) }
-    }
-
-    private static func showInitialScreen(view: TerminalChatView?, store: HistoryStore,
-                                         network: NetworkInterface, port: UInt16) throws {
-        if let view {
-            view.notice("Hush \(HushConfig.version) — 내 IP \(network.ip), /quit으로 종료")
-            for record in try store.load() { view.showMessage(record, isNew: false) }
-        } else {
-            print(TerminalChatView.styled("수신 중 (PID \(getpid())): \(network.name) \(network.ip):\(port), 기록: \(store.url.path)"))
-        }
     }
 
     private static func checkForUpdates(_ updater: UpdateRuntime?, at uptime: TimeInterval,
@@ -176,10 +203,12 @@ enum CLIApplication {
     }
 
     private static func receivePackets(_ receiver: UDPTransport, codec: PacketCodec,
-                                       session: inout ChatSession, view: TerminalChatView?) throws {
+                                       session: inout ChatSession, view: TerminalChatView?,
+                                       ignoring ownIPs: Set<String> = []) throws {
         for _ in 0..<64 {
             guard let received = try receiver.receive() else { break }
-            guard let packet = try? codec.decode(received.data, senderIP: received.senderIP) else { continue }
+            guard !ownIPs.contains(received.senderIP),
+                  let packet = try? codec.decode(received.data, senderIP: received.senderIP) else { continue }
             switch packet {
             case .heartbeat: session.receiveHeartbeat(from: received.senderIP, at: Date())
             case .message(let message):
