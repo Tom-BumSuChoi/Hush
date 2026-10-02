@@ -63,14 +63,16 @@ glab api --hostname gitlab.local -X PUT -H 'Content-Type: application/octet-stre
 
 ## 최초 설치와 복구
 
-각 사용자가 쓸 수 있는 디렉터리에 `Hush`를 복사하고 실행 권한을 부여한다. 예시는 다음과 같으며, 채팅과 수신기는 모두 같은 경로의 파일을 실행한다.
+각 사용자가 쓸 수 있는 PATH의 디렉터리에 `hush`라는 이름으로 복사하고 실행 권한을 부여한다. 대소문자를 구분하는 볼륨에서도 `hush`로 실행할 수 있도록 설치 이름은 소문자로 둔다. 예시는 다음과 같으며, 메뉴·채팅·수신기는 모두 같은 경로의 파일을 실행한다.
 
 ```sh
 mkdir -p "$HOME/.local/bin"
-cp .build/distribution/Hush "$HOME/.local/bin/Hush"
-chmod 755 "$HOME/.local/bin/Hush"
-"$HOME/.local/bin/Hush" chat --interface en0
+cp .build/distribution/Hush "$HOME/.local/bin/hush"
+chmod 755 "$HOME/.local/bin/hush"
+hush
 ```
+
+`$HOME/.local/bin`이 PATH에 없으면 zsh 설정(`~/.zshrc`)에 `export PATH="$HOME/.local/bin:$PATH"`를 추가한다.
 
 최초 설치 파일은 신뢰한 경로로 두 사용자에게 전달한다. 시스템 소유 디렉터리처럼 업데이트를 쓸 수 없는 위치에서는 자동 교체가 실패한다. 개발 중인 SPM 빌드 경로는 재빌드로 파일이 바뀔 수 있으므로 실제 사용에는 별도 설치 경로를 사용한다.
 

@@ -15,9 +15,9 @@ struct TerminalChatViewTests {
         // When: 내 메시지와 새 상대 메시지를 표시합니다.
         view.showMessage(record(outgoing: true), isNew: true)
         view.showMessage(record(outgoing: false), isNew: true)
-        // Then: 내 메시지는 색상·굵기로 구분되고 새 메시지는 소리 없이 표시됩니다.
-        #expect(output.contains("\u{1B}[1;36m[192.168.0.34] 안녕하세요\u{1B}[0m"))
-        #expect(output.contains("새 메시지 [192.168.0.34] 안녕하세요"))
+        // Then: 내 메시지는 밝은 초록·굵기로 구분되고 새 메시지는 초록으로 소리 없이 표시됩니다.
+        #expect(output.contains("\u{1B}[1;92m[192.168.0.34] 안녕하세요\u{1B}[0m"))
+        #expect(output.contains("\u{1B}[32m새 메시지 [192.168.0.34] 안녕하세요\u{1B}[0m"))
         #expect(!output.contains("\u{7}"))
     }
 
@@ -42,7 +42,7 @@ struct TerminalChatViewTests {
         // When: 상대 메시지가 표시됩니다.
         view.showMessage(record(outgoing: false), isNew: true)
         // Then: 입력 프롬프트에 작성하던 내용이 다시 표시됩니다.
-        #expect(output.hasSuffix("> 작성 중"))
+        #expect(output.hasSuffix("> 작성 중\u{1B}[0m"))
         #expect(view.consume([13]) == [.submit("작성 중")])
     }
 

@@ -194,7 +194,7 @@ def main():
             restored.expect("[127.0.0.1] 화면 종료 뒤 수신")
             # Then: 새 인증 뒤 기존 내 메시지와 화면 종료 후 받은 메시지를 조회합니다.
             restored.expect("실제 송신 테스트")
-            assert b"\x1b[1;36m" in restored.output
+            assert b"\x1b[1;92m" in restored.output
             duplicate = launch(directory, port)
             apps.append(duplicate)
             duplicate.unlock(password)

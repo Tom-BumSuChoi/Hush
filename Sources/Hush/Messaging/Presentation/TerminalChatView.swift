@@ -14,10 +14,15 @@ final class TerminalChatView {
         String(text.unicodeScalars.filter { $0.value >= 32 && !(127...159).contains($0.value) })
     }
 
+    // Hush 출력은 초록으로, 내 메시지는 밝은 초록 굵게 구분합니다.
+    static func styled(_ text: String, own: Bool = false) -> String {
+        "\u{1B}[\(own ? "1;92" : "32")m\(text)\u{1B}[0m"
+    }
+
     func showMessage(_ record: RecordedMessage, isNew: Bool) {
         let message = record.message
         let text = "[\(Self.clean(message.identity.senderIP))] \(Self.clean(message.content))"
-        let line = record.isOutgoing ? "\u{1B}[1;36m\(text)\u{1B}[0m" : "\(isNew ? "새 메시지 " : "")\(text)"
+        let line = record.isOutgoing ? Self.styled(text, own: true) : Self.styled("\(isNew ? "새 메시지 " : "")\(text)")
         write("\r\u{1B}[2K\(line)\n")
         redraw()
     }
@@ -27,12 +32,12 @@ final class TerminalChatView {
     }
 
     func notice(_ text: String) {
-        write("\r\u{1B}[2K\(Self.clean(text))\n")
+        write("\r\u{1B}[2K\(Self.styled(Self.clean(text)))\n")
         redraw()
     }
 
     func redraw() {
-        write("\r\u{1B}[2K> \(String(decoding: input, as: UTF8.self))")
+        write("\r\u{1B}[2K\(Self.styled("> \(String(decoding: input, as: UTF8.self))"))")
     }
 
     func consume(_ bytes: [UInt8]) -> [InputAction] {

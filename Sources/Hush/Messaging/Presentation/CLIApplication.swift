@@ -8,9 +8,71 @@ enum CLIApplication {
     static func run(_ options: CLIOptions) throws {
         let updater = try UpdateRuntime.configured()
         let interfaces = try NetworkInterface.discover()
-        let selected = try options.networkInterface(from: interfaces)
+        let selected = try options.networkInterface(from: interfaces, preference: .current())
         let store = try TerminalPassword.unlockHistory(at: options.historyDirectory)
-        let isChat = options.command == .chat
+        try runRole(isChat: options.command == .chat, options: options, updater: updater,
+            store: store, interfaces: interfaces, selected: selected)
+    }
+
+    static func runMenu(_ options: CLIOptions) throws {
+        let updater = try UpdateRuntime.configured()
+        let store = try TerminalPassword.unlockHistory(at: options.historyDirectory)
+        let menu = MainMenu()
+        defer { FileHandle.standardOutput.write(Data("\n".utf8)) }
+        while true {
+            // 메뉴도 채팅처럼 Ctrl-C와 터미널 종료에 끝냅니다.
+            configureSignals(isChat: true)
+            let preference = NetworkPreference.current()
+            let interfaces = (try? NetworkInterface.discover()) ?? []
+            let network = Result { try options.networkInterface(from: interfaces, preference: preference) }
+            let selected = try? network.get()
+            if case .failure(let error) = network { menu.notice("\(error)") }
+            let choice = try readKey(after: {
+                menu.show(network: selected, isWiFi: selected.map { preference.wifiNames.contains($0.name) } ?? false)
+            }, until: MainMenu.choice(for:))
+            guard let choice else { return }
+            switch choice {
+            case .history:
+                guard try readKey(after: { TerminalHistoryView().show(try store.load()) }, until: { $0 }) != nil else { return }
+            case .chat, .receive:
+                guard let selected else { continue }
+                do {
+                    try runRole(isChat: choice == .chat, options: options, updater: updater,
+                        store: store, interfaces: interfaces, selected: selected)
+                } catch { menu.notice("\(error)") }
+                if shutdownRequested { return }
+            case .quit: return
+            }
+        }
+    }
+
+    // 화면을 그리기 전에 입력 모드를 바꿔, 화면을 보고 바로 누른 키가 버려지지 않게 합니다.
+    // 받아들이는 키가 올 때까지 Enter 없이 읽으며, 종료 신호를 받으면 nil을 반환합니다.
+    private static func readKey<Value>(after show: () throws -> Void, until accept: (UInt8) -> Value?) throws -> Value? {
+        let terminal = try TerminalMode()
+        defer { terminal.restore() }
+        try show()
+        while !shutdownRequested {
+            var event = pollfd(fd: STDIN_FILENO, events: Int16(POLLIN), revents: 0)
+            let result = poll(&event, 1, 100)
+            if result < 0 {
+                if errno == EINTR { continue }
+                throw SocketFailure("메뉴 입력 대기")
+            }
+            guard result > 0 else { continue }
+            var byte: UInt8 = 0
+            let count = Darwin.read(STDIN_FILENO, &byte, 1)
+            if count < 0 {
+                if errno == EINTR { continue }
+                throw SocketFailure("메뉴 입력 읽기")
+            }
+            if let value = accept(count == 0 ? 4 : byte) { return value }
+        }
+        return nil
+    }
+
+    private static func runRole(isChat: Bool, options: CLIOptions, updater: UpdateRuntime?, store: HistoryStore,
+                                interfaces: [NetworkInterface], selected: NetworkInterface) throws {
         let lease = try RoleLease(directory: options.historyDirectory, role: isChat ? "chat" : "receive")
         defer { withExtendedLifetime(lease) {} }
         var session = try ChatSession(role: isChat ? .chat : .backgroundReceiver,
@@ -72,7 +134,7 @@ enum CLIApplication {
             view.notice("Hush \(HushConfig.version) — 내 IP \(network.ip), /quit으로 종료")
             for record in try store.load() { view.showMessage(record, isNew: false) }
         } else {
-            print("수신 중 (PID \(getpid())): \(network.name) \(network.ip):\(port), 기록: \(store.url.path)")
+            print(TerminalChatView.styled("수신 중 (PID \(getpid())): \(network.name) \(network.ip):\(port), 기록: \(store.url.path)"))
         }
     }
 

@@ -19,7 +19,7 @@ enum TerminalPassword {
 
     private static func read(_ prompt: String) throws -> String {
         guard isatty(STDIN_FILENO) == 1 else { throw CLIError("비밀번호 입력을 위해 터미널에서 직접 실행하세요") }
-        guard let pointer = getpass(prompt) else { throw CLIError("비밀번호를 읽을 수 없습니다") }
+        guard let pointer = getpass(TerminalChatView.styled(prompt)) else { throw CLIError("비밀번호를 읽을 수 없습니다") }
         let count = strlen(pointer)
         defer { _ = memset_s(pointer, count, 0, count) }
         let password = String(cString: pointer)

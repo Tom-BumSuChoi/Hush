@@ -6,14 +6,14 @@ struct CLIError: Error, CustomStringConvertible {
 }
 
 struct CLIOptions {
-    enum Command { case chat, receive, help, version }
+    enum Command { case menu, chat, receive, help, version }
     let command: Command
     let interfaceName: String?
     let port: UInt16
     let historyDirectory: URL
 
     init(arguments: [String]) throws {
-        var command = Command.chat
+        var command = Command.menu
         var interface: String?
         var port = HushConfig.udpPort
         var directory = FileManager.default.homeDirectoryForCurrentUser
@@ -57,27 +57,29 @@ struct CLIOptions {
         historyDirectory = directory
     }
 
-    func networkInterface(from interfaces: [NetworkInterface]) throws -> NetworkInterface {
+    func networkInterface(from interfaces: [NetworkInterface], preference: NetworkPreference) throws -> NetworkInterface {
         if let interfaceName {
             guard let selected = interfaces.first(where: { $0.name == interfaceName }) else {
                 throw CLIError("사용 가능한 IPv4 브로드캐스트 인터페이스가 아닙니다: \(interfaceName)")
             }
             return selected
         }
-        guard let selected = interfaces.sorted(by: { $0.name < $1.name }).first else {
+        let sorted = interfaces.sorted { $0.name < $1.name }
+        guard let first = sorted.first else {
             throw CLIError("사용 가능한 IPv4 브로드캐스트 네트워크가 없습니다")
         }
-        guard interfaces.count == 1 else {
-            throw CLIError("네트워크가 여러 개입니다. --interface로 선택하세요: \(interfaces.map(\.name).joined(separator: ", "))")
-        }
-        return selected
+        if sorted.count == 1 { return first }
+        if let wifi = sorted.first(where: { preference.wifiNames.contains($0.name) }) { return wifi }
+        if let primary = sorted.first(where: { $0.name == preference.primaryName }) { return primary }
+        throw CLIError("네트워크를 자동으로 정할 수 없습니다. --interface로 선택하세요: \(sorted.map(\.name).joined(separator: ", "))")
     }
 
     static let help = """
-    사용법: Hush [chat|receive] [옵션]
-      chat       비밀번호 입력 후 대화 조회와 채팅 (기본)
+    사용법: hush [chat|receive] [옵션]
+      (명령 없음)  비밀번호 입력 후 메뉴에서 채팅·기록 보기·수신기 선택
+      chat       비밀번호 입력 후 대화 조회와 채팅
       receive    비밀번호 입력 후 화면 없이 메시지 수신·저장
-      --interface 이름       사용할 네트워크 (예: en0)
+      --interface 이름       사용할 네트워크 (기본: Wi-Fi, 없으면 기본 경로 네트워크)
       --port 번호            UDP 포트 (기본: \(HushConfig.udpPort))
       --history-directory 경로  개인 기록 위치
       --help                 도움말
