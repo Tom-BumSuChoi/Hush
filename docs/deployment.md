@@ -10,39 +10,56 @@ bash Tools/build_release.sh
 
 산출물은 `.build/distribution/Hush`이다. 스크립트는 두 아키텍처의 release 빌드, universal 파일 생성, 로컬 실행을 위한 ad-hoc 코드 서명과 서명 검증, 버전 출력을 수행한다. ad-hoc 서명은 배포자를 인증하는 서명이 아니며, 업데이트의 신뢰 검증은 아래의 별도 배포 서명 키로 수행한다. 두 Mac에 동일한 통신용 공유키가 포함된 파일을 전달한다.
 
+## 배포 서버
+
+업데이트 파일은 사내 GitLab `gitlab.local`의 `bfit-daily/hush` 프로젝트(ID 11) 범용 패키지 저장소에서 제공한다. 프로젝트는 internal이며, Hush는 로그인 없이 파일을 받으므로 프로젝트 설정의 Visibility → Package registry에서 "Allow anyone to pull from Package Registry"를 켜 둔다. 이 설정으로 gitlab.local에 접근할 수 있는 누구나 계정 없이 실행 파일을 받을 수 있으며, 실행 파일에는 통신용 공유키가 포함된다.
+
+| 대상 | 주소 |
+|---|---|
+| 매니페스트 | `https://gitlab.local/api/v4/projects/11/packages/generic/hush/latest/manifest.json` |
+| 실행 파일 | `https://gitlab.local/api/v4/projects/11/packages/generic/hush/<버전>/Hush` |
+
+매니페스트는 고정된 `latest` 버전에 같은 파일 이름으로 다시 올리며, GitLab은 가장 최근에 올린 파일을 제공한다. 프로젝트 경로 대신 숫자 ID를 사용해 프로젝트 이름이나 그룹이 바뀌어도 주소를 유지한다.
+
+`gitlab.local`은 `/etc/hosts`의 `192.168.0.42 gitlab.local` 항목으로 찾고, 자체 서명 인증서를 사용한다. 두 Mac 모두 이 항목을 추가하고 인증서를 시스템 키체인에 신뢰로 등록해야 업데이트를 확인할 수 있다. 그렇지 않으면 실행은 유지되지만 채팅 화면에 업데이트 확인 실패 안내가 확인 주기마다 표시된다.
+
 ## 업데이트 신뢰 설정
 
-사내망 주소가 아직 없으므로 현재 기본 설정의 자동 업데이트는 비활성이다. 주소가 정해지면 [실행과 검증](running.md)의 명령으로 `.build/ReleaseTool`을 빌드한 뒤, 최초 한 번 배포 서명 키를 생성한다.
+배포 서명 키는 `$HOME/.hush-release-keys`에 생성했으며, 공개키와 매니페스트 주소는 `Sources/Hush/Configuration/HushConfig.swift`의 `updateSigningPublicKeyBase64`·`updateManifestURL`에 설정되어 있다. 키는 [실행과 검증](running.md)의 명령으로 `.build/ReleaseTool`을 빌드한 뒤 다음 명령으로 만들었다.
 
 ```sh
 .build/ReleaseTool keygen "$HOME/.hush-release-keys"
 ```
 
-표준 출력의 base64 공개키를 보관한다. 개인키는 해당 디렉터리의 `signing-private-key` 파일이며 프로그램·공유 배포 디렉터리·Git 저장소에 포함하지 않는다. 이후 배포에도 같은 키를 사용한다.
+개인키는 해당 디렉터리의 `signing-private-key` 파일이며 프로그램·공유 배포 디렉터리·Git 저장소에 포함하지 않고 별도로 백업한다. 개인키를 잃으면 설치된 프로그램에 새 버전을 배포할 수 없어 다시 설치해야 한다. 이후 배포에도 같은 키를 사용한다.
 
-`Sources/Hush/Configuration/HushConfig.swift`에서 다음 값을 설정한 뒤 배포 파일을 다시 빌드한다.
-
-- `version`: 배포할 `주.부.패치` 버전
-- `updateManifestURL`: 사내 서버에서 제공할 `manifest.json`의 HTTP(S) 주소
-- `updateSigningPublicKeyBase64`: 생성 도구가 출력한 공개키
-
-두 업데이트 설정은 함께 지정한다. 각 새 버전에도 같은 매니페스트 주소와 공개키를 포함한다. 기록 형식·통신 형식은 현재 모두 버전 1이며, 형식 변경이나 키 교체가 필요한 배포는 별도 호환성 설계가 필요하다.
+새 버전은 `HushConfig.version`에 배포할 `주.부.패치` 버전을 설정한 뒤 다시 빌드한다. 두 업데이트 설정은 함께 지정하며, 각 새 버전에도 같은 매니페스트 주소와 공개키를 포함한다. 기록 형식·통신 형식은 현재 모두 버전 1이며, 형식 변경이나 키 교체가 필요한 배포는 별도 호환성 설계가 필요하다.
 
 ## 새 버전 게시
 
-예를 들어 `HushConfig.version`을 `0.2.0`으로 변경해 빌드했다면, 실제 서버 주소를 사용해 다음 명령을 실행한다. `release_download_url`과 `release_public_key`는 실제 배포 값으로 바꾼다.
+예를 들어 `HushConfig.version`을 `0.2.0`으로 변경해 빌드했다면 다음 명령으로 매니페스트를 서명하고 검증한다.
 
 ```sh
-release_download_url='https://실제-사내-서버/releases/0.2.0/Hush'
-release_public_key='키 생성 도구가 출력한 base64 공개키'
-.build/ReleaseTool manifest .build/distribution/Hush 0.2.0 \
-  "$release_download_url" "$HOME/.hush-release-keys/signing-private-key" \
+release_version='0.2.0'
+release_base='https://gitlab.local/api/v4/projects/11/packages/generic/hush'
+release_public_key='2Nh7R0TJAide4WVjaU4rVFvfSpaO5vwLDQTjur04Kvg='
+.build/ReleaseTool manifest .build/distribution/Hush "$release_version" \
+  "$release_base/$release_version/Hush" "$HOME/.hush-release-keys/signing-private-key" \
   .build/distribution/manifest.json
 .build/ReleaseTool verify .build/distribution/manifest.json \
   "$release_public_key" .build/distribution/Hush
 ```
 
-검증 출력이 `0.2.0`인지 확인한다. 실행 파일을 버전별 다운로드 주소에 먼저 게시하고, 설정한 주소의 매니페스트를 마지막으로 교체한다. 파일은 압축하지 않은 Mach-O 실행 파일이며 파일을 변경했다면 매니페스트도 다시 서명한다. 채팅을 중계하는 서버는 필요하지 않으며 이 서버는 업데이트 파일만 제공한다.
+검증 출력이 `0.2.0`인지 확인한다. `glab`으로 `gitlab.local`에 로그인한 상태에서 실행 파일을 버전별 주소에 먼저 올리고, 매니페스트를 `latest`에 마지막으로 올린다.
+
+```sh
+glab api --hostname gitlab.local -X PUT -H 'Content-Type: application/octet-stream' \
+  "projects/11/packages/generic/hush/$release_version/Hush" --input .build/distribution/Hush
+glab api --hostname gitlab.local -X PUT -H 'Content-Type: application/octet-stream' \
+  projects/11/packages/generic/hush/latest/manifest.json --input .build/distribution/manifest.json
+```
+
+파일은 압축하지 않은 Mach-O 실행 파일이며 파일을 변경했다면 매니페스트도 다시 서명한다. 채팅을 중계하는 서버는 필요하지 않으며 GitLab은 업데이트 파일만 제공한다.
 
 ## 최초 설치와 복구
 
@@ -59,7 +76,7 @@ chmod 755 "$HOME/.local/bin/Hush"
 
 업데이트 후에는 각 프로세스가 비밀번호를 다시 요청한다. 터미널을 닫은 수신기가 업데이트로 종료되면 새 터미널에서 `receive`를 다시 실행해 인증한다. 이때까지 메시지가 누락될 수 있다.
 
-교체 전 실행 파일은 설치 경로에 `.previous`를 붙인 파일로 남는다. 새 파일로의 `execv` 실패 시 자동으로 되돌린다. 새 버전 실행 이후 문제가 발견되면 두 역할을 종료한 뒤 `.previous` 파일을 복원하고 문제 버전 매니페스트를 내려야 한다. 그렇지 않으면 복원한 프로그램이 같은 새 버전을 다시 발견한다. 실행 파일 복원은 개인 기록을 변경하지 않으며, 기록 형식을 변경한 미래 버전의 역호환을 보장하지 않는다.
+교체 전 실행 파일은 설치 경로에 `.previous`를 붙인 파일로 남는다. 새 파일로의 `execv` 실패 시 자동으로 되돌린다. 새 버전 실행 이후 문제가 발견되면 두 역할을 종료한 뒤 `.previous` 파일을 복원하고 이전 버전의 매니페스트를 `latest`에 다시 올려야 한다. 그렇지 않으면 복원한 프로그램이 같은 새 버전을 다시 발견한다. 실행 파일 복원은 개인 기록을 변경하지 않으며, 기록 형식을 변경한 미래 버전의 역호환을 보장하지 않는다.
 
 ## 실제 환경 확인
 
