@@ -1,8 +1,15 @@
 import Darwin
+import Foundation
 
 final class TerminalMode {
     private var original = termios()
     private var restored = false
+    private var reportsFocus = false
+
+    func enableFocusReporting() {
+        FileHandle.standardOutput.write(Data("\u{1B}[?1004h".utf8))
+        reportsFocus = true
+    }
 
     init() throws {
         guard tcgetattr(STDIN_FILENO, &original) == 0 else { throw SocketFailure("터미널 상태 조회") }
@@ -16,6 +23,10 @@ final class TerminalMode {
     }
 
     func restore() {
+        if reportsFocus {
+            FileHandle.standardOutput.write(Data("\u{1B}[?1004l".utf8))
+            reportsFocus = false
+        }
         if !restored { tcsetattr(STDIN_FILENO, TCSAFLUSH, &original); restored = true }
     }
 

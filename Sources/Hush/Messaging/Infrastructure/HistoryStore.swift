@@ -46,6 +46,7 @@ final class HistoryStore: ConversationStore {
     @discardableResult
     func append(_ record: RecordedMessage) throws -> Bool {
         try Self.withLock(at: url) {
+            if !record.isOutgoing { try UnreadStore.received(record.message.identity, in: url.deletingLastPathComponent()) }
             var records = try read()
             guard !records.contains(where: { $0.message.identity == record.message.identity }) else { return false }
             records.append(record)
@@ -64,6 +65,7 @@ final class HistoryStore: ConversationStore {
                 // 다른 열쇠로 봉인되었거나 손상된 항목은 열 수 없으므로 건너뜁니다.
                 guard let message = try? Inbox.open(Data(line), with: inboxKey),
                       !records.contains(where: { $0.message.identity == message.identity }) else { continue }
+                try UnreadStore.received(message.identity, in: url.deletingLastPathComponent())
                 records.append(RecordedMessage(message: message, isOutgoing: false))
                 changed = true
             }

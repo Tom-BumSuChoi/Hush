@@ -99,6 +99,7 @@ enum CLIApplication {
         configureSignals(isChat: true)
         let terminal = try TerminalMode()
         defer { terminal.restore() }
+        terminal.enableFocusReporting()
         let view = TerminalChatView()
         view.notice("Hush \(HushConfig.version) — 내 IP \(selected.ip), /help로 명령 보기")
         for record in try store.load() { view.showMessage(record, isNew: false) }
@@ -106,6 +107,7 @@ enum CLIApplication {
         var lastRefresh: TimeInterval = 0
         var lastPaletteCheck: TimeInterval = 0
         var previousStatus = ""
+        var acknowledged: Set<MessageIdentity> = []
         while !shutdownRequested && (!quitting || sender.hasPending) {
             let uptime = ProcessInfo.processInfo.systemUptime
             let now = Date()
@@ -137,6 +139,14 @@ enum CLIApplication {
             if events.count > 1, events[1].revents & Int16(POLLIN | POLLHUP) != 0 {
                 try handleInput(view: view, session: &session, sender: &sender, codec: codec, quitting: &quitting)
             }
+            if view.focused && !quitting {
+                let unread = view.displayedIncoming.subtracting(acknowledged)
+                if !unread.isEmpty {
+                    try UnreadStore.markRead(unread, in: options.historyDirectory)
+                    acknowledged.formUnion(unread)
+                }
+            }
+            view.finishReadCheck()
         }
         view.finish()
     }
@@ -190,7 +200,7 @@ enum CLIApplication {
             let uptime = ProcessInfo.processInfo.systemUptime
             try checkForUpdates(updater, at: uptime, terminal: nil, view: nil)
             if let onUnread, lastPendingCheck.map({ uptime - $0 >= 0.5 }) ?? true {
-                if let unread = badge.update(pending: Inbox.pendingCount(in: options.historyDirectory), at: uptime) { onUnread(unread) }
+                if let unread = badge.update(pending: try UnreadStore.count(in: options.historyDirectory), at: uptime) { onUnread(unread) }
                 lastPendingCheck = uptime
             }
             // 네트워크가 바뀌어도 내 메시지를 거르도록 내 IP 목록을 주기적으로 다시 읽습니다.

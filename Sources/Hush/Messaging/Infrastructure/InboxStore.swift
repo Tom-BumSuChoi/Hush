@@ -39,6 +39,7 @@ final class InboxWriter: ConversationStore {
             }
             guard fsync(fd) == 0 else { throw SocketFailure("수신함 동기화") }
         }
+        try UnreadStore.received(record.message.identity, in: url.deletingLastPathComponent())
         written.insert(record.message.identity)
         return true
     }

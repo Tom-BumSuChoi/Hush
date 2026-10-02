@@ -4,6 +4,14 @@ final class TerminalChatView {
     enum InputAction: Equatable { case submit(String), quit, help, clear, unknownCommand(String) }
     private var input: [UInt8] = []
     private var escapeSequence = false
+    private var escapeBytes: [UInt8] = []
+    private var focusReportingObserved = false
+    private(set) var focused = false
+
+    func finishReadCheck() {
+        if !focusReportingObserved { focused = false }
+    }
+    private(set) var displayedIncoming: Set<MessageIdentity> = []
     private let write: (String) -> Void
 
     init(write: @escaping (String) -> Void = { FileHandle.standardOutput.write(Data($0.utf8)) }) {
@@ -20,6 +28,7 @@ final class TerminalChatView {
     }
 
     func showMessage(_ record: RecordedMessage, isNew: Bool) {
+        if !record.isOutgoing { displayedIncoming.insert(record.message.identity) }
         let message = record.message
         let text = "[\(Self.clean(message.identity.senderIP))] \(Self.clean(message.content))"
         let line = record.isOutgoing ? Self.styled(text, own: true) : Self.styled("\(isNew ? "새 메시지 " : "")\(text)")
@@ -44,11 +53,19 @@ final class TerminalChatView {
         var actions: [InputAction] = []
         for byte in bytes {
             if escapeSequence {
-                if byte >= 64 && byte <= 126 && byte != 91 { escapeSequence = false }
+                escapeBytes.append(byte)
+                if byte >= 64 && byte <= 126 && byte != 91 {
+                    if escapeBytes == [91, 73] { focusReportingObserved = true; focused = true }
+                    if escapeBytes == [91, 79] { focusReportingObserved = true; focused = false }
+                    escapeSequence = false
+                    escapeBytes.removeAll()
+                }
                 continue
             }
+            if byte != 27 { focused = true }
             switch byte {
             case 27: escapeSequence = true
+            case 0...3, 5...7, 14...26, 28...31: break
             case 4:
                 if input.isEmpty { actions.append(.quit) }
             case 10, 13:

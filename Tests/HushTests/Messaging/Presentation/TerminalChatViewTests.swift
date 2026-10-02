@@ -3,6 +3,28 @@ import Testing
 @testable import Hush
 
 struct TerminalChatViewTests {
+    @Test func focusReportsSurviveSplitInputWithoutEnteringMessage() {
+        let view = TerminalChatView { _ in }
+        _ = view.consume([27, 91])
+        _ = view.consume([73])
+        #expect(view.focused)
+        view.finishReadCheck()
+        #expect(view.focused)
+        _ = view.consume(Array("hello".utf8))
+        _ = view.consume([27, 91, 79])
+        #expect(!view.focused)
+        #expect(view.consume([13]) == [.submit("hello")])
+    }
+
+    @Test func unsupportedTerminalOnlyAcknowledgesOnInput() {
+        let view = TerminalChatView { _ in }
+        #expect(!view.focused)
+        _ = view.consume(Array("a".utf8))
+        #expect(view.focused)
+        view.finishReadCheck()
+        #expect(!view.focused)
+    }
+
     private func record(outgoing: Bool, content: String = "안녕하세요") -> RecordedMessage {
         RecordedMessage(message: ChatMessage(identity: MessageIdentity(senderIP: "192.168.0.34", createdAt: Date(), contentHash: "hash"),
             content: content), isOutgoing: outgoing)
