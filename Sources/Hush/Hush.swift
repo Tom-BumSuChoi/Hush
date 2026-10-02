@@ -6,6 +6,7 @@ struct Hush {
     static func main() {
         do {
             let options = try CLIOptions(arguments: Array(CommandLine.arguments.dropFirst()))
+            TerminalPalette.reload(from: options.historyDirectory)
             switch options.command {
             case .help: print(CLIOptions.help)
             case .version: print(HushConfig.version)

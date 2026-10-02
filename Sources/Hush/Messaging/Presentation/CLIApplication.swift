@@ -29,6 +29,7 @@ enum CLIApplication {
         while true {
             // 메뉴도 채팅처럼 Ctrl-C와 터미널 종료에 끝냅니다.
             configureSignals(isChat: true)
+            TerminalPalette.reload(from: options.historyDirectory)
             let preference = NetworkPreference.current()
             let interfaces = (try? NetworkInterface.discover()) ?? []
             let network = Result { try options.networkInterface(from: interfaces, preference: preference) }
@@ -103,6 +104,7 @@ enum CLIApplication {
         for record in try store.load() { view.showMessage(record, isNew: false) }
         var quitting = false
         var lastRefresh: TimeInterval = 0
+        var lastPaletteCheck: TimeInterval = 0
         var previousStatus = ""
         while !shutdownRequested && (!quitting || sender.hasPending) {
             let uptime = ProcessInfo.processInfo.systemUptime
@@ -114,6 +116,11 @@ enum CLIApplication {
             }
             do { try sender.sendDue(at: uptime) }
             catch { view.notice("메시지 송신 실패: \(error)") }
+            // 메뉴 막대에서 바꾼 글자 색을 새로 나오는 줄과 입력 줄부터 반영합니다.
+            if uptime - lastPaletteCheck >= 0.5 {
+                if TerminalPalette.reload(from: options.historyDirectory) { view.redraw() }
+                lastPaletteCheck = uptime
+            }
             try refreshDisplay(session: &session, at: now, uptime: uptime, view: view,
                 previousStatus: &previousStatus, lastRefresh: &lastRefresh)
             let remaining = sender.nextDeadline.map { max(0, $0 - ProcessInfo.processInfo.systemUptime) } ?? 0.1
@@ -142,11 +149,15 @@ enum CLIApplication {
         MainActor.assumeIsolated {
             NSApplication.shared.setActivationPolicy(.accessory)
             let executable = Bundle.main.executableURL?.resolvingSymlinksInPath()
-            MenuBarIndicator.current = MenuBarIndicator {
+            let directory = options.historyDirectory
+            MenuBarIndicator.current = MenuBarIndicator(openHush: {
                 guard let executable else { return }
-                do { try TerminalLauncher.openHush(executable: executable, directory: options.historyDirectory) }
+                do { try TerminalLauncher.openHush(executable: executable, directory: directory) }
                 catch { log("Hush 열기 실패: \(error)") }
-            }
+            }, textColor: { SettingsStore.textColor(in: directory) }, setTextColor: { color in
+                do { try SettingsStore.save(textColor: color, in: directory) }
+                catch { log("글자 색 저장 실패: \(error)") }
+            })
         }
         Thread {
             do {

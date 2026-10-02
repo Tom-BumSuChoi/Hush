@@ -14,9 +14,9 @@ final class TerminalChatView {
         String(text.unicodeScalars.filter { $0.value >= 32 && !(127...159).contains($0.value) })
     }
 
-    // Hush 출력은 초록으로, 내 메시지는 밝은 초록 굵게 구분합니다.
+    // Hush 출력은 고른 글자 색으로, 내 메시지는 같은 계열의 밝은 색에 굵게 구분합니다.
     static func styled(_ text: String, own: Bool = false) -> String {
-        "\u{1B}[\(own ? "1;92" : "32")m\(text)\u{1B}[0m"
+        own ? TerminalPalette.current.own(text) : TerminalPalette.current.normal(text)
     }
 
     func showMessage(_ record: RecordedMessage, isNew: Bool) {

@@ -142,7 +142,7 @@ Tests/HushTests/
 
 `--interface`가 없으면 `NetworkPreference`가 SystemConfiguration으로 Wi-Fi 인터페이스와 기본 경로 인터페이스를 조회하고, `CLIOptions`가 연결된 네트워크 하나, Wi-Fi, 기본 경로 순으로 선택한다. 정할 수 없으면 임의로 송신하지 않고 선택을 요구한다.
 
-Hush의 터미널 출력은 `TerminalChatView.styled`로 초록색을 적용하고, 내 메시지는 밝은 초록색과 굵기로 구분한다. 원격 내용은 색을 적용하기 전에 제어 문자를 제거한다.
+Hush의 터미널 출력은 `TerminalChatView.styled`가 `TerminalPalette.current`로 글자 색을 적용하고, 내 메시지는 같은 계열의 밝은 색과 굵기로 구분한다. 글자 색 `TextColor`는 터미널 테마 색(`ansi`), 색 없음(`terminalDefault`), 팔레트 색(`rgb`) 가운데 하나이며 `SettingsStore`가 `settings.json`에 저장한다. 손상되었거나 범위를 벗어난 설정은 잘못된 제어 코드를 내보내지 않도록 기본 초록으로 읽는다. 실행 시작, 메뉴 표시, 채팅 중 0.5초마다 `TerminalPalette.reload`로 설정을 다시 읽으며, CLI 출력은 한 스레드에서만 하므로 `current`를 공유 상태로 둔다. 메뉴 막대의 `글자 색` 하위 메뉴는 열 때마다 설정을 다시 읽어 체크를 붙이고, 색상 팔레트는 손을 뗄 때만 색을 저장한다. 원격 내용은 색을 적용하기 전에 제어 문자를 제거한다.
 
 실행 방법과 실제 PTY·UDP 통합 검증 명령은 [실행과 검증](running.md)을 따른다.
 
