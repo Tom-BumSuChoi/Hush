@@ -82,7 +82,7 @@ Enter로 송신하며, Backspace로 마지막 글자를 지우고 Ctrl-U로 입�
 
 수신기는 비밀번호를 묻지 않으며 메시지를 표시하지 않는다. 출력은 `~/Library/Logs/Hush/receiver.log`에 남는다.
 
-로그인 항목으로 실행한 수신기는 숨김 옵션 `--menu-bar`로 메뉴 막대에 표시를 둔다. 평소에는 흑백 말풍선, 수신함에 1.5초 넘게 남아 있는 메시지가 있으면 채운 말풍선에 빨간 배지로 건수를 보여 준다. 열 건 이상은 `9+`로 표시한다. 수신함의 한 줄이 아직 기록에 합쳐지지 않은 메시지 하나이므로 복호화 없이 줄 수를 센다. 채팅이 열려 있으면 수신함이 0.5초 안에 합쳐지므로 표시가 깜빡이지 않으며, `hush`로 기록을 열면 표시가 꺼진다. 메뉴의 `Hush 열기`는 기록 위치에 `Hush.command`를 만들어 기본 터미널에서 연다. 기존 등록은 `hush`를 한 번 실행하면 `--menu-bar`가 들어간 내용으로 바뀐다. 메뉴 막대에 보이지 않으면 시스템 설정의 메뉴 막대 항목에서 `hush`가 허용되어 있는지 확인한다.
+로그인 항목으로 실행한 수신기는 숨김 옵션 `--menu-bar`로 메뉴 막대에 표시를 둔다. 평소에는 흑백 말풍선, 읽지 않은 메시지가 1.5초 넘게 남아 있으면 빨간 배지로 건수를 보여 준다. 열 건 이상은 `9+`로 표시한다. 읽음 상태는 메시지 식별자의 해시를 담은 `unread.json`에 별도로 저장하며 수신함이 기록에 합쳐져도 유지된다. 포커스 보고(DECSET 1004)를 받은 채팅 터미널에서는 입력 포커스가 있는 동안 화면에 표시된 메시지만 읽음 처리한다. 보고가 없는 터미널에서는 키 입력 시 표시된 메시지를 읽음 처리한다. 메뉴·기록 보기만 열면 배지는 유지된다. 메뉴의 `Hush 열기`는 기록 위치에 `Hush.command`를 만들어 기본 터미널에서 연다. 기존 등록은 `hush`를 한 번 실행하면 `--menu-bar`가 들어간 내용으로 바뀐다.
 
 수신기는 기록을 열지 않고 받은 메시지를 수신함 `inbox.jsonl`에 암호화해 쌓는다. 수신함 열쇠는 비밀번호로 기록을 처음 열 때 `inbox-key.json`에 만들어지며, 공개키만 수신기가 사용하고 개인키는 기록용 키로 봉인한다. 비밀번호로 기록을 열면 메뉴·기록 보기·채팅이 수신함을 기록에 중복 없이 합치고 비운다. 수신함 열쇠가 없으면 수신기는 시작하지 않는다.
 
@@ -113,6 +113,7 @@ swiftc -parse-as-library Sources/Hush/Configuration/HushConfig.swift \
   Sources/Hush/Messaging/Infrastructure/PacketCodec.swift \
   Sources/Hush/Messaging/Infrastructure/HistoryStore.swift \
   Sources/Hush/Messaging/Infrastructure/InboxStore.swift \
+  Sources/Hush/Messaging/Infrastructure/UnreadStore.swift \
   Sources/Hush/Messaging/Infrastructure/UDPTransport.swift \
   Tools/PacketFixture.swift -o .build/PacketFixture
 python3 Tools/test_cli.py --binary "$(swift build --show-bin-path)/Hush" \
