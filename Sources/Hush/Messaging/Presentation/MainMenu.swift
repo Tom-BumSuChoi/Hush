@@ -1,7 +1,7 @@
 import Foundation
 
 final class MainMenu {
-    enum Choice: Equatable { case chat, history, receive, quit }
+    enum Choice: Equatable { case chat, history, quit }
     private let write: (String) -> Void
 
     init(write: @escaping (String) -> Void = { FileHandle.standardOutput.write(Data($0.utf8)) }) {
@@ -12,16 +12,17 @@ final class MainMenu {
         switch byte {
         case UInt8(ascii: "1"): .chat
         case UInt8(ascii: "2"): .history
-        case UInt8(ascii: "3"): .receive
         case UInt8(ascii: "q"), UInt8(ascii: "Q"), 4: .quit
         default: nil
         }
     }
 
-    func show(network: NetworkInterface?, isWiFi: Bool) {
+    // 수신기 상태를 알 수 없는 실행(테스트용 기록 위치, 개발 빌드)에서는 상태를 표시하지 않습니다.
+    func show(network: NetworkInterface?, isWiFi: Bool, receiverRunning: Bool?) {
         let place = network.map { "\($0.name)\(isWiFi ? " (Wi-Fi)" : "") \($0.ip)" } ?? "네트워크 없음"
-        write("\n" + TerminalChatView.styled("Hush \(HushConfig.version) · \(TerminalChatView.clean(place))") + "\n")
-        write(TerminalChatView.styled("1 채팅   2 기록 보기   3 수신기 실행   q 종료") + "\n")
+        let receiver = receiverRunning.map { " · 수신기 \($0 ? "켜짐" : "꺼짐")" } ?? ""
+        write("\n" + TerminalChatView.styled("Hush \(HushConfig.version) · \(TerminalChatView.clean(place))\(receiver)") + "\n")
+        write(TerminalChatView.styled("1 채팅   2 기록 보기   q 종료") + "\n")
         write(TerminalChatView.styled("선택: "))
     }
 

@@ -13,12 +13,14 @@ struct CLIOptions {
     let port: UInt16
     let historyDirectory: URL
 
+    static let defaultHistoryDirectory = FileManager.default.homeDirectoryForCurrentUser
+        .appendingPathComponent("Library/Application Support/Hush", isDirectory: true)
+
     init(arguments: [String]) throws {
         var command = Command.menu
         var interface: String?
         var port = HushConfig.udpPort
-        var directory = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Library/Application Support/Hush", isDirectory: true)
+        var directory = Self.defaultHistoryDirectory
         var index = 0
         if let first = arguments.first, !first.hasPrefix("-") {
             switch first {

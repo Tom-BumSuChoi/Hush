@@ -19,6 +19,12 @@ enum CLIApplication {
         let store = try TerminalPassword.unlockHistory(at: options.historyDirectory)
         let menu = MainMenu()
         defer { FileHandle.standardOutput.write(Data("\n".utf8)) }
+        // 수신함 열쇠가 준비된 뒤 로그인 항목으로 수신기를 등록합니다.
+        let agentExecutable = receiverAgentExecutable(options)
+        if let agentExecutable {
+            do { try ReceiverAgent.ensureRegistered(executable: agentExecutable) }
+            catch { menu.notice("\(error)") }
+        }
         while true {
             // 메뉴도 채팅처럼 Ctrl-C와 터미널 종료에 끝냅니다.
             configureSignals(isChat: true)
@@ -28,7 +34,8 @@ enum CLIApplication {
             let selected = try? network.get()
             if case .failure(let error) = network { menu.notice("\(error)") }
             let choice = try readKey(after: {
-                menu.show(network: selected, isWiFi: selected.map { preference.wifiNames.contains($0.name) } ?? false)
+                menu.show(network: selected, isWiFi: selected.map { preference.wifiNames.contains($0.name) } ?? false,
+                    receiverRunning: agentExecutable.map { _ in ReceiverAgent.isRunning() })
             }, until: MainMenu.choice(for:))
             guard let choice else { return }
             switch choice {
@@ -40,13 +47,17 @@ enum CLIApplication {
                     try runChat(options: options, updater: updater, store: store, interfaces: interfaces, selected: selected)
                 } catch { menu.notice("\(error)") }
                 if shutdownRequested { return }
-            case .receive:
-                do { try runReceiver(options: options, updater: updater) }
-                catch { menu.notice("\(error)") }
-                if shutdownRequested { return }
             case .quit: return
             }
         }
+    }
+
+    // 테스트용 기록 위치나 개발 빌드는 로그인 항목으로 등록하지 않습니다.
+    private static func receiverAgentExecutable(_ options: CLIOptions) -> URL? {
+        guard options.historyDirectory.standardizedFileURL == CLIOptions.defaultHistoryDirectory.standardizedFileURL,
+              let executable = Bundle.main.executableURL?.resolvingSymlinksInPath(),
+              !executable.pathComponents.contains(".build") else { return nil }
+        return executable
     }
 
     // 화면을 그리기 전에 입력 모드를 바꿔, 화면을 보고 바로 누른 키가 버려지지 않게 합니다.
@@ -131,9 +142,7 @@ enum CLIApplication {
         let codec = PacketCodec(key: HushConfig.communicationKey)
         let receiver = try UDPTransport(port: options.port)
         configureSignals(isChat: false)
-        // 터미널이 닫힌 뒤에도 쓰기 오류로 종료되지 않도록 표준 입출력 함수로 출력합니다.
-        print(TerminalChatView.styled("수신 중 (PID \(getpid())): 포트 \(options.port), 수신함: \(store.url.path)"))
-        fflush(stdout)
+        log("수신 중 (PID \(getpid())): 포트 \(options.port), 수신함: \(store.url.path)")
         var ownIPs: Set<String> = []
         var lastDiscovery: TimeInterval?
         while !shutdownRequested {
@@ -156,6 +165,12 @@ enum CLIApplication {
         }
     }
 
+    // 터미널이 닫힌 뒤에도 쓰기 오류로 종료되지 않도록 표준 입출력 함수로 출력하며, 로그 파일에는 색을 넣지 않습니다.
+    private static func log(_ text: String) {
+        print(isatty(STDOUT_FILENO) == 1 ? TerminalChatView.styled(text) : text)
+        fflush(stdout)
+    }
+
     private static func configureSignals(isChat: Bool) {
         shutdownRequested = false
         signal(SIGINT) { _ in shutdownRequested = true }
@@ -169,7 +184,11 @@ enum CLIApplication {
                                         terminal: TerminalMode?, view: TerminalChatView?) throws {
         var installed: InstalledExecutable?
         do { installed = try updater?.poll(at: uptime) }
-        catch { view?.notice("업데이트 확인·적용 실패: \(error)") }
+        catch {
+            if let view { view.notice("업데이트 확인·적용 실패: \(error)") }
+            // 10분마다 반복될 수 있으므로 로그에는 네트워크 오류의 요약만 남깁니다.
+            else { log("업데이트 확인·적용 실패: \((error as? URLError)?.localizedDescription ?? "\(error)")") }
+        }
         if let installed {
             view?.notice("새 버전 적용 완료. 재시작 후 비밀번호를 다시 입력하세요")
             terminal?.restore()
