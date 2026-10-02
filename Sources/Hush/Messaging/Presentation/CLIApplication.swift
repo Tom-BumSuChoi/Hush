@@ -98,7 +98,7 @@ enum CLIApplication {
         let terminal = try TerminalMode()
         defer { terminal.restore() }
         let view = TerminalChatView()
-        view.notice("Hush \(HushConfig.version) — 내 IP \(selected.ip), /quit으로 종료")
+        view.notice("Hush \(HushConfig.version) — 내 IP \(selected.ip), /help로 명령 보기")
         for record in try store.load() { view.showMessage(record, isNew: false) }
         var quitting = false
         var lastRefresh: TimeInterval = 0
@@ -246,6 +246,11 @@ enum CLIApplication {
             for action in view.consume(Array(bytes.prefix(count))) {
                 switch action {
                 case .quit: quitting = true
+                case .help: view.showHelp()
+                case .clear:
+                    view.clearScreen()
+                    view.showStatus(ip: session.peerIP, online: session.isPeerOnline(at: Date()))
+                case .unknownCommand(let command): view.notice("알 수 없는 명령: \(command) (/help로 명령 보기)")
                 case .submit(let content):
                     guard !quitting else { continue }
                     try submitMessage(content, session: &session, sender: &sender, codec: codec, view: view)
