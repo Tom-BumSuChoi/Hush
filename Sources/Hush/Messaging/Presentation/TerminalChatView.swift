@@ -16,9 +16,20 @@ final class TerminalChatView {
     }
     private(set) var displayedIncoming: Set<MessageIdentity> = []
     private let write: (String) -> Void
+    private let calendar: Calendar
+    private let formatter: DateFormatter
+    private let now: () -> Date
 
-    init(write: @escaping (String) -> Void = { FileHandle.standardOutput.write(Data($0.utf8)) }) {
+    init(write: @escaping (String) -> Void = { FileHandle.standardOutput.write(Data($0.utf8)) },
+         timeZone: TimeZone = .current, now: @escaping () -> Date = Date.init) {
         self.write = write
+        self.now = now
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZone
+        self.calendar = calendar
+        formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = timeZone
     }
 
     static func clean(_ text: String) -> String {
@@ -41,10 +52,18 @@ final class TerminalChatView {
     func showMessage(_ record: RecordedMessage, isNew: Bool) {
         if !record.isOutgoing { displayedIncoming.insert(record.message.identity) }
         let message = record.message
-        let text = "[\(Self.clean(message.identity.senderIP))] \(Self.clean(message.content))"
-        let line = record.isOutgoing ? Self.styled(text, own: true) : Self.styled("\(isNew ? "새 메시지 " : "")\(text)")
-        write("\(clearPromptArea())\(line)\n")
+        let notice = !record.isOutgoing && isNew ? "새 메시지 " : ""
+        let text = "\(timestamp(message.identity.createdAt)) \(notice)[\(Self.clean(message.identity.senderIP))] \(Self.clean(message.content))"
+        write("\(clearPromptArea())\(Self.styled(text, own: record.isOutgoing))\n")
         redraw()
+    }
+
+    // 메시지를 만든 시각으로, 오늘이면 시:분만, 지난 날은 날짜를, 올해가 아니면 연도까지 붙입니다.
+    private func timestamp(_ date: Date) -> String {
+        let today = now()
+        formatter.dateFormat = calendar.isDate(date, inSameDayAs: today) ? "HH:mm"
+            : calendar.isDate(date, equalTo: today, toGranularity: .year) ? "MM-dd HH:mm" : "yyyy-MM-dd HH:mm"
+        return formatter.string(from: date)
     }
 
     func showPeerTyping(_ typing: Bool) {

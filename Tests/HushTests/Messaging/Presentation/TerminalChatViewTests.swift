@@ -25,22 +25,40 @@ struct TerminalChatViewTests {
         #expect(!view.focused)
     }
 
-    private func record(outgoing: Bool, content: String = "안녕하세요") -> RecordedMessage {
-        RecordedMessage(message: ChatMessage(identity: MessageIdentity(senderIP: "192.168.0.34", createdAt: Date(), contentHash: "hash"),
+    // 2026-10-02 00:30:00 UTC, 서울 09:30
+    private static let sentAt = Date(timeIntervalSince1970: 1_790_901_000)
+    private static let seoul = TimeZone(identifier: "Asia/Seoul")!
+
+    private func record(outgoing: Bool, content: String = "안녕하세요", createdAt: Date = sentAt) -> RecordedMessage {
+        RecordedMessage(message: ChatMessage(identity: MessageIdentity(senderIP: "192.168.0.34", createdAt: createdAt, contentHash: "hash"),
             content: content), isOutgoing: outgoing)
     }
 
     @Test func 내_메시지는_하이라이트되고_새_상대_메시지는_조용하게_표시된다() {
         // Given: 터미널 출력과 내 메시지 및 상대 메시지가 있습니다.
         var output = ""
-        let view = TerminalChatView { output += $0 }
+        let view = TerminalChatView(write: { output += $0 }, timeZone: Self.seoul, now: { Self.sentAt })
         // When: 내 메시지와 새 상대 메시지를 표시합니다.
         view.showMessage(record(outgoing: true), isNew: true)
         view.showMessage(record(outgoing: false), isNew: true)
         // Then: 내 메시지는 밝은 초록·굵기로 구분되고 새 메시지는 초록으로 소리 없이 표시됩니다.
-        #expect(output.contains("\u{1B}[1;92m[192.168.0.34] 안녕하세요\u{1B}[0m"))
-        #expect(output.contains("\u{1B}[32m새 메시지 [192.168.0.34] 안녕하세요\u{1B}[0m"))
+        #expect(output.contains("\u{1B}[1;92m09:30 [192.168.0.34] 안녕하세요\u{1B}[0m"))
+        #expect(output.contains("\u{1B}[32m09:30 새 메시지 [192.168.0.34] 안녕하세요\u{1B}[0m"))
         #expect(!output.contains("\u{7}"))
+    }
+
+    @Test func 메시지_시각은_오늘이면_시분만_지난_날은_날짜를_지난해는_연도까지_붙인다() {
+        // Given: 서울 시각으로 2026-10-02 09:30인 채팅 화면이 있습니다.
+        var output = ""
+        let view = TerminalChatView(write: { output += $0 }, timeZone: Self.seoul, now: { Self.sentAt })
+        // When: 오늘, 어제, 지난해에 만든 상대 메시지를 표시합니다.
+        view.showMessage(record(outgoing: false, content: "오늘"), isNew: false)
+        view.showMessage(record(outgoing: false, content: "어제", createdAt: Self.sentAt.addingTimeInterval(-86_400)), isNew: false)
+        view.showMessage(record(outgoing: false, content: "작년", createdAt: Self.sentAt.addingTimeInterval(-365 * 86_400)), isNew: false)
+        // Then: 상대가 만든 시각을 현지 시각으로, 오늘이 아니면 날짜를, 올해가 아니면 연도까지 붙입니다.
+        #expect(output.contains("\u{1B}[32m09:30 [192.168.0.34] 오늘\u{1B}[0m"))
+        #expect(output.contains("\u{1B}[32m10-01 09:30 [192.168.0.34] 어제\u{1B}[0m"))
+        #expect(output.contains("\u{1B}[32m2025-10-02 09:30 [192.168.0.34] 작년\u{1B}[0m"))
     }
 
     @Test func 한글_입력과_지우기와_종료_명령을_처리한다() {
@@ -150,13 +168,13 @@ struct TerminalChatViewTests {
     @Test func 입력_중_표시는_새_출력_뒤에도_입력_줄_바로_위에_남는다() {
         // Given: 상대가 입력 중으로 표시되어 있습니다.
         var output = ""
-        let view = TerminalChatView { output += $0 }
+        let view = TerminalChatView(write: { output += $0 }, timeZone: Self.seoul, now: { Self.sentAt })
         view.showPeerTyping(true)
         output = ""
         // When: 새 메시지가 표시됩니다.
         view.showMessage(record(outgoing: false), isNew: true)
         // Then: 표시 줄을 지운 자리에 메시지를 쓰고, 그 아래에 표시 줄과 입력 줄을 다시 그립니다.
-        #expect(output.hasPrefix("\r\u{1B}[2K\u{1B}[1A\u{1B}[2K\u{1B}[32m새 메시지 [192.168.0.34] 안녕하세요\u{1B}[0m\n"))
+        #expect(output.hasPrefix("\r\u{1B}[2K\u{1B}[1A\u{1B}[2K\u{1B}[32m09:30 새 메시지 [192.168.0.34] 안녕하세요\u{1B}[0m\n"))
         #expect(output.hasSuffix("\u{1B}[32m상대 입력 중…\u{1B}[0m\n\r\u{1B}[2K\u{1B}[32m> \u{1B}[0m"))
     }
 
