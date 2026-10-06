@@ -10,6 +10,6 @@ enum HushConfig {
     static let messageTransmissionCount = 3
     static let messageTransmissionDuration: TimeInterval = 1
     static let updateCheckInterval: TimeInterval = 600
-    static let updateManifestURL: URL? = URL(string: "https://gitlab.local/api/v4/projects/11/packages/generic/hush/latest/manifest.json")
+    static let updateManifestURL: URL? = URL(string: "https://github.com/Tom-BumSuChoi/Hush/releases/latest/download/manifest.json")
     static let updateSigningPublicKeyBase64: String? = "2Nh7R0TJAide4WVjaU4rVFvfSpaO5vwLDQTjur04Kvg="
 }

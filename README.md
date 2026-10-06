@@ -6,33 +6,11 @@ macOS 13 이상, Apple Silicon과 Intel Mac에서 실행됩니다.
 
 ## 설치 (처음 한 번)
 
-### 1. gitlab.local 접속 준비
-
-Hush는 사내 GitLab(`gitlab.local`)에서 내려받고 업데이트합니다. 아래 두 가지를 먼저 해 두어야 합니다. 이미 gitlab.local을 쓰고 있다면 이미 되어 있을 수 있습니다.
-
-**이름 등록.** 이 명령 출력에 `192.168.0.42`가 없으면 등록합니다. 관리자 비밀번호를 묻습니다.
-
-```sh
-grep gitlab.local /etc/hosts
-echo '192.168.0.42 gitlab.local' | sudo tee -a /etc/hosts
-```
-
-**인증서 신뢰.** gitlab.local은 사내에서 만든 인증서를 사용합니다. 브라우저로 GitLab에 로그인해 이 저장소의 [`docs/gitlab.local-ca.pem`](docs/gitlab.local-ca.pem)을 내려받습니다. 이때 나오는 인증서 경고는 한 번만 무시합니다. 내려받은 파일의 지문이 아래 값과 같은지 확인한 뒤 시스템 키체인에 신뢰로 등록합니다.
-
-```sh
-cd ~/Downloads
-openssl x509 -in gitlab.local-ca.pem -noout -fingerprint -sha256
-# sha256 Fingerprint=C8:34:74:D8:EF:74:46:8F:00:18:F0:9A:57:1C:83:BA:41:0E:C6:FD:28:98:7E:12:F7:73:59:68:5C:F9:EC:67
-sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain gitlab.local-ca.pem
-```
-
-지문이 다르면 등록하지 말고 GitLab 관리자에게 확인합니다.
-
-### 2. 내려받기
+Hush는 GitHub 릴리스([Tom-BumSuChoi/Hush](https://github.com/Tom-BumSuChoi/Hush/releases))에서 내려받고 업데이트합니다. 다음 명령은 최신 버전을 받습니다.
 
 ```sh
 mkdir -p ~/.local/bin
-curl -fL https://gitlab.local/api/v4/projects/11/packages/generic/hush/0.2.0/Hush -o ~/.local/bin/hush
+curl -fL https://github.com/Tom-BumSuChoi/Hush/releases/latest/download/Hush -o ~/.local/bin/hush
 chmod 755 ~/.local/bin/hush
 ```
 
@@ -44,11 +22,16 @@ chmod 755 ~/.local/bin/hush
 echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
 ```
 
-마지막으로 최신 버전으로 올립니다. 위 주소는 0.2.0이며, 이 명령이 최신 버전을 받아 교체합니다.
+### 0.6.0 이하에서 옮기기
+
+0.6.0 이하는 사내 GitLab에서 업데이트를 받도록 만들어져 있어 `hush update`가 실패합니다. 한 번만 다음 명령으로 새 버전을 받으면 이후에는 GitHub에서 업데이트를 받습니다. 실행 중인 채팅과 수신기는 파일 교체를 감지해 새 버전으로 다시 시작하며, 채팅은 비밀번호를 다시 묻습니다.
 
 ```sh
-hush update
+curl -fL https://github.com/Tom-BumSuChoi/Hush/releases/latest/download/Hush -o ~/.local/bin/hush.new \
+  && chmod 755 ~/.local/bin/hush.new && mv ~/.local/bin/hush.new ~/.local/bin/hush
 ```
+
+실행 중인 파일을 바로 덮어쓰지 않고 새 파일로 받아 `mv`로 바꿉니다. 같은 파일을 덮어쓰면 실행 중인 Hush가 교체를 알아채지 못하고, macOS가 실행 중인 프로세스를 강제로 종료할 수 있습니다.
 
 ## 처음 실행
 
@@ -130,7 +113,7 @@ hush update
 | 메뉴에 `수신기 꺼짐` | `hush`를 다시 실행하면 등록을 다시 확인합니다. 로그는 `~/Library/Logs/Hush/receiver.log`에 있습니다. |
 | 메뉴 막대에 말풍선이 없음 | `hush`를 한 번 실행해 등록을 갱신합니다. 그래도 없으면 시스템 설정의 메뉴 막대에서 `hush`가 허용되어 있는지 확인합니다. |
 | `네트워크를 자동으로 정할 수 없습니다` | Wi-Fi나 유선 네트워크 연결을 확인합니다. |
-| `업데이트 확인·적용 실패` 또는 `hush update` 실패 | 위 "gitlab.local 접속 준비" 두 가지를 확인합니다. |
+| `업데이트 확인·적용 실패` 또는 `hush update` 실패 | 0.6.0 이하라면 위 "0.6.0 이하에서 옮기기"를 따릅니다. 그 밖에는 인터넷 연결과 `github.com` 접속을 확인합니다. |
 | 상대 메시지가 오지 않음 | 두 Mac이 같은 공유기의 같은 네트워크에 있는지(게스트 네트워크 제외), 터미널의 로컬 네트워크 접근 허용과 macOS 방화벽 설정을 확인합니다. |
 | 비밀번호를 잊음 | 기록을 복구할 수 없습니다. 아래 "삭제"의 기록 삭제 후 새로 시작합니다. |
 

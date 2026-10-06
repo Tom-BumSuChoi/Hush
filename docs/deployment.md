@@ -12,16 +12,16 @@ bash Tools/build_release.sh
 
 ## 배포 서버
 
-업데이트 파일은 사내 GitLab `gitlab.local`의 `bfit-daily/hush` 프로젝트(ID 11) 범용 패키지 저장소에서 제공한다. 프로젝트는 internal이며, Hush는 로그인 없이 파일을 받으므로 프로젝트 설정의 Visibility → Package registry에서 "Allow anyone to pull from Package Registry"를 켜 둔다. 이 설정으로 gitlab.local에 접근할 수 있는 누구나 계정 없이 실행 파일을 받을 수 있으며, 실행 파일에는 통신용 공유키가 포함된다.
+업데이트 파일은 GitHub 공개 저장소 [`Tom-BumSuChoi/Hush`](https://github.com/Tom-BumSuChoi/Hush)의 릴리스로 제공한다. 버전마다 `v<버전>` 태그의 릴리스를 만들고 실행 파일 `Hush`와 서명한 `manifest.json`을 첨부한다. Hush는 로그인 없이 파일을 받으며, 저장소와 릴리스가 공개이므로 누구나 실행 파일을 받을 수 있고 실행 파일에는 통신용 공유키가 포함된다.
 
 | 대상 | 주소 |
 |---|---|
-| 매니페스트 | `https://gitlab.local/api/v4/projects/11/packages/generic/hush/latest/manifest.json` |
-| 실행 파일 | `https://gitlab.local/api/v4/projects/11/packages/generic/hush/<버전>/Hush` |
+| 매니페스트 | `https://github.com/Tom-BumSuChoi/Hush/releases/latest/download/manifest.json` |
+| 실행 파일 | `https://github.com/Tom-BumSuChoi/Hush/releases/download/v<버전>/Hush` |
 
-매니페스트는 고정된 `latest` 버전에 같은 파일 이름으로 다시 올리며, GitLab은 가장 최근에 올린 파일을 제공한다. 프로젝트 경로 대신 숫자 ID를 사용해 프로젝트 이름이나 그룹이 바뀌어도 주소를 유지한다.
+매니페스트 주소의 `latest`는 GitHub가 가장 최근의 정식 릴리스(초안·사전 릴리스 제외)로 리다이렉트하며, Hush는 리다이렉트를 따라 파일을 받는다. 사용자용 설치 절차는 저장소의 [README](../README.md)에 있으며, README는 `latest` 주소로 내려받으므로 새 버전을 게시할 때 고치지 않아도 된다. GitHub에 접속할 수 없으면 실행은 유지되지만 채팅 화면에 업데이트 확인 실패 안내가 확인 주기마다 표시된다.
 
-`gitlab.local`은 `/etc/hosts`의 `192.168.0.42 gitlab.local` 항목으로 찾고, 사내 CA가 발급한 인증서를 사용한다. 두 Mac 모두 이 항목을 추가하고 CA 인증서 [`gitlab.local-ca.pem`](gitlab.local-ca.pem)을 시스템 키체인에 신뢰로 등록해야 업데이트를 확인할 수 있다. 사용자용 설치 절차는 저장소의 [README](../README.md)에 있으며, README는 0.2.0 주소로 내려받은 뒤 `hush update`로 최신 버전을 받게 하므로 새 버전을 게시할 때 고치지 않아도 된다. 그렇지 않으면 실행은 유지되지만 채팅 화면에 업데이트 확인 실패 안내가 확인 주기마다 표시된다.
+0.6.0 이하는 사내 GitLab `gitlab.local`의 패키지 저장소 주소를 매니페스트 주소로 내장했다. 해당 프로젝트가 없어져 자동 업데이트로는 GitHub 주소로 옮길 수 없으므로, README의 "0.6.0 이하에서 옮기기" 명령으로 한 번 직접 교체한다.
 
 ## 업데이트 신뢰 설정
 
@@ -37,29 +37,28 @@ bash Tools/build_release.sh
 
 ## 새 버전 게시
 
-예를 들어 `HushConfig.version`을 `0.2.0`으로 변경해 빌드했다면 다음 명령으로 매니페스트를 서명하고 검증한다.
+예를 들어 `HushConfig.version`을 `0.7.0`으로 변경해 빌드했다면 다음 명령으로 매니페스트를 서명하고 검증한다.
 
 ```sh
-release_version='0.2.0'
-release_base='https://gitlab.local/api/v4/projects/11/packages/generic/hush'
+release_version='0.7.0'
+release_base='https://github.com/Tom-BumSuChoi/Hush/releases/download'
 release_public_key='2Nh7R0TJAide4WVjaU4rVFvfSpaO5vwLDQTjur04Kvg='
 .build/ReleaseTool manifest .build/distribution/Hush "$release_version" \
-  "$release_base/$release_version/Hush" "$HOME/.hush-release-keys/signing-private-key" \
+  "$release_base/v$release_version/Hush" "$HOME/.hush-release-keys/signing-private-key" \
   .build/distribution/manifest.json
 .build/ReleaseTool verify .build/distribution/manifest.json \
   "$release_public_key" .build/distribution/Hush
 ```
 
-검증 출력이 `0.2.0`인지 확인한다. `glab`으로 `gitlab.local`에 로그인한 상태에서 실행 파일을 버전별 주소에 먼저 올리고, 매니페스트를 `latest`에 마지막으로 올린다.
+검증 출력이 `0.7.0`인지 확인한다. 버전 커밋을 GitHub `main`에 올린 뒤, `gh`로 GitHub에 로그인한 상태에서 실행 파일과 매니페스트를 첨부한 릴리스를 만든다. `gh`는 파일을 모두 올린 뒤 릴리스를 공개하므로 `latest` 매니페스트가 아직 올라가지 않은 실행 파일을 가리키는 순간이 없다.
 
 ```sh
-glab api --hostname gitlab.local -X PUT -H 'Content-Type: application/octet-stream' \
-  "projects/11/packages/generic/hush/$release_version/Hush" --input .build/distribution/Hush
-glab api --hostname gitlab.local -X PUT -H 'Content-Type: application/octet-stream' \
-  projects/11/packages/generic/hush/latest/manifest.json --input .build/distribution/manifest.json
+gh release create "v$release_version" -R Tom-BumSuChoi/Hush --target main \
+  --title "$release_version" --notes '<변경 내용>' \
+  .build/distribution/Hush .build/distribution/manifest.json
 ```
 
-실행 중인 Hush는 10분 이내에 새 버전을 받으며, 사용자는 `hush update`로 바로 받을 수 있다. 파일은 압축하지 않은 Mach-O 실행 파일이며 파일을 변경했다면 매니페스트도 다시 서명한다. 채팅을 중계하는 서버는 필요하지 않으며 GitLab은 업데이트 파일만 제공한다.
+실행 중인 Hush는 10분 이내에 새 버전을 받으며, 사용자는 `hush update`로 바로 받을 수 있다. 파일은 압축하지 않은 Mach-O 실행 파일이며 파일을 변경했다면 매니페스트도 다시 서명한다. 채팅을 중계하는 서버는 필요하지 않으며 GitHub은 업데이트 파일만 제공한다.
 
 ## 최초 설치와 복구
 
@@ -80,7 +79,7 @@ hush
 
 업데이트 후 채팅은 비밀번호를 다시 요청하고, 수신기는 터미널이 닫혀 있어도 비밀번호 없이 새 버전으로 수신을 이어간다.
 
-교체 전 실행 파일은 설치 경로에 `.previous`를 붙인 파일로 남는다. 새 파일로의 `execv` 실패 시 자동으로 되돌린다. 새 버전 실행 이후 문제가 발견되면 두 역할을 종료한 뒤 `.previous` 파일을 복원하고 이전 버전의 매니페스트를 `latest`에 다시 올려야 한다. 그렇지 않으면 복원한 프로그램이 같은 새 버전을 다시 발견한다. 실행 파일 복원은 개인 기록을 변경하지 않으며, 기록 형식을 변경한 미래 버전의 역호환을 보장하지 않는다.
+교체 전 실행 파일은 설치 경로에 `.previous`를 붙인 파일로 남는다. 새 파일로의 `execv` 실패 시 자동으로 되돌린다. 새 버전 실행 이후 문제가 발견되면 두 역할을 종료한 뒤 `.previous` 파일을 복원하고 문제가 된 릴리스를 삭제하거나 초안으로 되돌려 이전 릴리스가 `latest`가 되게 해야 한다. 그렇지 않으면 복원한 프로그램이 같은 새 버전을 다시 발견한다. 실행 파일 복원은 개인 기록을 변경하지 않으며, 기록 형식을 변경한 미래 버전의 역호환을 보장하지 않는다.
 
 ## 실제 환경 확인
 
