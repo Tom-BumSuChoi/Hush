@@ -9,6 +9,8 @@ struct PresenceService {
     private let role: Role
     private var schedule = HeartbeatSchedule()
     private var peer = PeerPresence()
+    private var typingSchedule = TypingSchedule()
+    private var peerTyping = PeerTyping()
 
     init(role: Role) {
         self.role = role
@@ -28,5 +30,25 @@ struct PresenceService {
 
     func isPeerOnline(at now: Date) -> Bool {
         peer.isOnline(at: now)
+    }
+
+    func typingSignal(composing: Bool, at now: Date) -> TypingSignal? {
+        role == .chat ? typingSchedule.signal(composing: composing, at: now) : nil
+    }
+
+    mutating func recordTypingSent(_ signal: TypingSignal, at sentAt: Date) {
+        typingSchedule.recordSent(signal, at: sentAt)
+    }
+
+    mutating func receiveTyping(_ signal: TypingSignal, at receivedAt: Date) {
+        peerTyping.receive(signal, at: receivedAt)
+    }
+
+    mutating func clearPeerTyping() {
+        peerTyping.clear()
+    }
+
+    func isPeerTyping(at now: Date) -> Bool {
+        peerTyping.isTyping(at: now)
     }
 }

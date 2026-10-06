@@ -12,7 +12,10 @@ Sources/Hush/
 ├── Presence/
 │   ├── Domain/
 │   │   ├── PeerPresence.swift
-│   │   └── HeartbeatSchedule.swift
+│   │   ├── HeartbeatSchedule.swift
+│   │   ├── TypingSignal.swift
+│   │   ├── TypingSchedule.swift
+│   │   └── PeerTyping.swift
 │   ├── Application/
 │   │   └── PresenceService.swift
 │   ├── Infrastructure/
@@ -34,7 +37,9 @@ Tests/HushTests/
 ├── Presence/
 │   ├── Domain/
 │   │   ├── PeerPresenceTests.swift
-│   │   └── HeartbeatScheduleTests.swift
+│   │   ├── HeartbeatScheduleTests.swift
+│   │   ├── TypingScheduleTests.swift
+│   │   └── PeerTypingTests.swift
 │   ├── Application/
 │   │   └── PresenceServiceTests.swift
 │   ├── Infrastructure/
@@ -53,7 +58,7 @@ Tests/HushTests/
 
 위 트리는 코드 배치 기준이다. 도메인과 레이어 폴더는 해당 코드가 생길 때 만든다.
 
-- `Presence`: heartbeat와 상대 온라인 상태
+- `Presence`: heartbeat와 상대 온라인 상태, 입력 중 신호와 상대 입력 중 상태
 - `Messaging`: 메시지 송수신, 중복 판별, 대화 기록
 - `Domain`: 도메인 상태와 규칙
 - `Application`: 도메인 규칙과 송수신·저장 기능을 연결하는 유스케이스
@@ -70,6 +75,8 @@ Tests/HushTests/
 현재 `peerOfflineThreshold`는 마지막 heartbeat 수신 후 오프라인으로 판단하는 기준이며, 단위는 초이고 값은 12이다.
 
 `heartbeatInterval`은 마지막 heartbeat 송신 후 다음 송신까지의 간격이며, 단위는 초이고 값은 3이다. 첫 heartbeat는 채팅 시작 즉시 송신한다.
+
+`typingSignalInterval`은 입력 중 신호를 보낸 뒤 입력이 바뀌어도 다시 보내지 않는 간격이며, 단위는 초이고 값은 2이다. `peerTypingExpiry`는 마지막 입력 중 신호 수신 후 표시를 끝내는 기준이며, 단위는 초이고 값은 5이다.
 
 `messageTransmissionCount`는 메시지 한 건의 송신 횟수이며 값은 3이다. `messageTransmissionDuration`은 첫 송신부터 마지막 송신까지의 기간이며, 단위는 초이고 값은 1이다. 세 번의 송신은 시작 시점, 0.5초 후, 1초 후에 계획한다.
 
@@ -98,6 +105,8 @@ Tests/HushTests/
 
 `shouldSendHeartbeat(at:)`로 송신 여부를 조회하고 실제 송신 후 `recordHeartbeatSent(at:)`로 송신 시각을 기록한다. `receiveHeartbeat(at:)`는 복호화·검증을 마친 상대 heartbeat의 수신 시각을 반영하며, `isPeerOnline(at:)`로 상대 상태를 조회한다. 내 송신 시각과 상대 수신 시각은 독립적으로 관리한다. 역할별 송신 여부와 3초·12초 경계 및 송수신 상태의 독립성은 `Presence/Application/PresenceServiceTests.swift`에서 검증한다.
 
+`Presence/Domain/TypingSchedule.swift`는 입력이 바뀔 때 메시지 작성 여부를 받아 보낼 신호를 정한다. 작성 중이면 처음 또는 마지막 입력 중 송신 후 2초부터 `.typing`을, 입력 중을 알린 뒤 작성이 끝나면 `.stopped`를 한 번 반환한다. heartbeat와 같이 조회는 기록을 바꾸지 않으며 실제 송신 후 `recordSent(_:at:)`로 기록한다. `Presence/Domain/PeerTyping.swift`는 마지막 `.typing` 수신 후 5초 경계로 상대 입력 중을 판정하고, `.stopped` 수신이나 `clear()`로 바로 끝낸다. `PresenceService`는 둘을 연결하며 `Role.backgroundReceiver`는 입력 중 신호를 보내지 않도록 판단한다.
+
 `Messaging/Domain/MessageIdentity.swift`와 대응하는 테스트에 메시지 식별값 비교가 구현되어 있다. 발신 IP, 최초 생성 시각, 내용 해시를 불변 값으로 보관하며, 세 값이 모두 같아야 같은 메시지로 판별한다. IP와 내용 해시는 문자열로, 생성 시각은 `Date`로 전달받는다.
 
 `Messaging/Domain/MessageDeduplicator.swift`는 식별값을 `Set`으로 관리하며, `register(_:)`는 처음 등록한 식별값에만 `true`를 반환한다. `MessageIdentity`는 세 필드의 동등성을 유지하면서 `Hashable`을 따른다.
@@ -120,13 +129,15 @@ Tests/HushTests/
 
 ## 6. 암호화 통신과 기록 저장
 
-최소 macOS 버전은 13이다. 외부 패키지 없이 Darwin POSIX UDP 소켓, CryptoKit의 AES-GCM 인증 암호화와 SHA-256 내용 해시를 사용한다. 패킷은 버전 1 JSON으로 메시지와 heartbeat를 구분하며, 생성 시각은 `Date`의 JSON 숫자 표현으로 정밀도를 유지한다. 수신 메시지 식별값의 발신 IP는 UDP 출발 주소에서 얻고 내용 해시는 복호화한 내용으로 다시 계산한다.
+최소 macOS 버전은 13이다. 외부 패키지 없이 Darwin POSIX UDP 소켓, CryptoKit의 AES-GCM 인증 암호화와 SHA-256 내용 해시를 사용한다. 패킷은 버전 1 JSON으로 메시지, heartbeat, 입력 중(`typing`), 입력 정지(`typingStopped`)를 구분하며, 생성 시각은 `Date`의 JSON 숫자 표현으로 정밀도를 유지한다. 수신 메시지 식별값의 발신 IP는 UDP 출발 주소에서 얻고 내용 해시는 복호화한 내용으로 다시 계산한다.
 
 `MessageFactory`는 마지막 생성 시각보다 최소 1마이크로초 뒤의 시각을 사용해 동일 시각·동일 내용의 새 작성을 구분한다. 재시작 시 기존 내 메시지의 마지막 생성 시각을 복원한다.
 
 `HistoryStore`는 무작위 16바이트 salt와 PBKDF2-HMAC-SHA256 600,000회로 개인 비밀번호에서 256비트 기록용 키를 유도한다. 대화와 내 메시지 여부는 통신용 키와 별도의 키로 AES-GCM 암호화하며, 파일 권한은 0600이다. 같은 기록을 사용하는 프로세스는 별도 잠금 파일의 `flock`으로 최신 기록 조회·중복 판별·원자적 파일 교체를 묶어 처리한다. 잘못된 비밀번호나 손상된 기록은 기존 파일을 덮어쓰지 않는다.
 
-`ChatSession`은 저장 포트 `ConversationStore`와 Presence·Messaging 규칙을 연결한다. 오프라인 상태에서도 송신 준비를 허용하고, 내 IP의 heartbeat를 상대 상태에 반영하지 않는다. 수신기가 수신함에 저장한 메시지는 채팅에서 기록을 새로 조회할 때 합쳐져 한 번 표시된다.
+패킷 종류를 늘려도 형식 버전은 1을 유지한다. 이전 버전은 모르는 종류를 해석하지 못해 해당 패킷만 버리므로 메시지와 heartbeat는 계속 주고받는다.
+
+`ChatSession`은 저장 포트 `ConversationStore`와 Presence·Messaging 규칙을 연결한다. 오프라인 상태에서도 송신 준비를 허용하고, 내 IP의 heartbeat와 입력 중 신호를 상대 상태에 반영하지 않는다. 반복 수신본이 아닌 상대의 새 메시지를 받거나 기록 조회로 합치면 상대 입력 중 표시를 끝낸다. 수신기가 수신함에 저장한 메시지는 채팅에서 기록을 새로 조회할 때 합쳐져 한 번 표시된다.
 
 `InboxWriter`는 비밀번호 없는 수신기의 저장 포트 구현이다. 수신함 공개키로 메시지마다 일회용 Curve25519 키 합의와 HKDF-SHA256으로 만든 키를 사용해 AES-GCM으로 암호화하고 `inbox.jsonl`에 한 줄씩 덧붙인다. CryptoKit HPKE는 최소 macOS 13에서 사용할 수 없어 직접 조합한다. 수신기는 기록을 읽지 않으므로 중복은 실행 중 메모리에서만 거른다. `HistoryStore`는 비밀번호로 열 때 수신함 열쇠를 준비하며, 개인키는 기록용 키로 봉인해 `inbox-key.json`에 둔다. 열 수 없는 열쇠 파일은 새 열쇠쌍으로 바꾼다. `load()`는 기록 잠금과 수신함 잠금 안에서 수신함을 복호화해 기록에 없는 메시지만 상대 메시지로 합친 뒤 수신함을 비운다. 기록 파일 형식은 바꾸지 않는다.
 
@@ -136,7 +147,7 @@ Tests/HushTests/
 
 `Hush.swift`는 실행 옵션에 따라 `CLIApplication`을 조립한다. 실제 채팅·수신 역할은 터미널에서 숨김 입력한 비밀번호로 기록을 연 뒤 UDP 소켓을 사용한다. 최초 기록 생성 시 비밀번호 확인을 받으며 잘못된 비밀번호·비터미널 입력에는 기록을 덮어쓰거나 생성하지 않는다. 도움말과 버전 조회는 기록·소켓을 열지 않는다.
 
-`CLIApplication`의 `poll` 이벤트 루프는 UDP 수신, 터미널 입력, 반복 송신과 heartbeat를 연결한다. 채팅은 비밀번호로 메모리 내 기록용 키를 얻고, 수신기는 비밀번호 없이 수신함 공개키만 사용한다. 둘은 암호화 파일만 공유한다. `RoleLease`는 같은 기록에 같은 역할이 중복 실행되는 것을 막는다. 수신 역할은 SIGHUP을 무시하며 heartbeat를 송신하지 않는다. 채팅의 새 출력에는 작성 중인 입력을 다시 표시하고, 종료 시 터미널 입력 상태를 복원한다. `TerminalChatView.consume`은 `/`로 시작하는 입력을 `/help`·`/clear`·`/quit`·알 수 없는 명령으로 해석해 전송하지 않으며, `//`로 시작하면 앞의 `/` 하나를 뗀 메시지로 보낸다.
+`CLIApplication`의 `poll` 이벤트 루프는 UDP 수신, 터미널 입력, 반복 송신과 heartbeat를 연결한다. 채팅은 비밀번호로 메모리 내 기록용 키를 얻고, 수신기는 비밀번호 없이 수신함 공개키만 사용한다. 둘은 암호화 파일만 공유한다. `RoleLease`는 같은 기록에 같은 역할이 중복 실행되는 것을 막는다. 수신 역할은 SIGHUP을 무시하며 heartbeat를 송신하지 않는다. 채팅의 새 출력에는 작성 중인 입력을 다시 표시하고, 종료 시 터미널 입력 상태를 복원한다. 채팅은 터미널 입력으로 작성 중인 내용이 바뀌면 `TerminalChatView.composingMessage`로 메시지 작성 여부를 정해 입력 중·정지 신호를 한 번 송신한다. 입력 중 신호는 놓쳐도 상대 화면에서 만료되므로 반복 송신하지 않고 송신 실패도 안내하지 않는다. 이벤트 루프마다 상대 입력 중 여부를 화면에 넘기며, `TerminalChatView`는 상태가 바뀔 때만 입력 줄 바로 위의 한 줄을 그리거나 지운다. 새 출력은 입력 중 줄과 입력 줄을 함께 지운 자리에 쓰고 두 줄을 다시 그린다. `TerminalChatView.consume`은 `/`로 시작하는 입력을 `/help`·`/clear`·`/quit`·알 수 없는 명령으로 해석해 전송하지 않으며, `//`로 시작하면 앞의 `/` 하나를 뗀 메시지로 보낸다.
 
 명령 없이 실행하면 `CLIApplication.runMenu`가 비밀번호로 기록을 한 번 연 뒤 `ReceiverAgent`로 수신기를 LaunchAgent에 등록하고 `MainMenu`를 표시한다. 메뉴는 번호 키 하나로 채팅·기록 보기·종료를 고르며, 채팅은 `chat` 명령과 같은 실행 경로를 같은 프로세스에서 사용한다. 메뉴 상단의 수신기 상태는 `launchctl print`의 실행 상태로 확인하며, 수신기 실행 잠금은 건드리지 않아 막 시작하는 수신기와 충돌하지 않는다. 기본 기록 위치가 아니거나 `.build` 안의 실행 파일이면 등록과 상태 표시를 하지 않는다. `ReceiverAgent`는 같은 실행 파일로 이미 등록되어 있으면 그대로 두고, 아니면 등록 파일을 바꿔 다시 등록한다. 등록한 수신기는 `--menu-bar`로 실행되어 메인 스레드에서 AppKit `NSApplication`과 `MenuBarIndicator`를 실행하고, 수신 루프는 별도 스레드에서 돈다. 수신 루프는 0.5초마다 `Inbox.pendingCount`를 읽어 `UnreadBadge`의 1.5초 지연 규칙을 거친 건수만 메인 액터로 넘긴다. 루프가 끝나면 프로세스를 종료한다. `TerminalLauncher`는 다른 앱 제어 권한 없이 `.command` 파일로 기본 터미널에서 Hush를 연다. `/quit`·Ctrl-D로 끝난 역할은 메뉴로 돌아오고, 종료 신호로 끝난 역할은 프로세스를 종료한다. 메뉴의 키 입력은 화면을 그리기 전에 입력 모드를 바꿔 화면을 본 직후의 입력을 버리지 않는다. `TerminalHistoryView`는 저장된 기록을 생성 시각과 함께 표시한다. 업데이트 재시작은 같은 실행 인자를 사용하므로 메뉴에서 시작한 프로세스는 메뉴로 다시 시작해 비밀번호를 요청한다.
 

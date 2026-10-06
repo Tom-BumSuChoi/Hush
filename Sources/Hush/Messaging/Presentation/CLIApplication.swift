@@ -137,7 +137,12 @@ enum CLIApplication {
                 try receivePackets(receiver, codec: codec, session: &session, view: view)
             }
             if events.count > 1, events[1].revents & Int16(POLLIN | POLLHUP) != 0 {
+                let draft = view.draft
                 try handleInput(view: view, session: &session, sender: &sender, codec: codec, quitting: &quitting)
+                if view.draft != draft {
+                    sendTypingIfNeeded(session: &session, composing: view.composingMessage, at: Date(), codec: codec,
+                        socket: socket, network: selected, port: options.port)
+                }
             }
             if view.focused && !quitting {
                 let unread = view.displayedIncoming.subtracting(acknowledged)
@@ -261,6 +266,16 @@ enum CLIApplication {
         } catch { view?.notice("heartbeat 송신 실패: \(error)") }
     }
 
+    // 입력 중 알림은 놓쳐도 상대 화면에서 만료되므로, 송신 실패를 키마다 안내하지 않습니다.
+    private static func sendTypingIfNeeded(session: inout ChatSession, composing: Bool, at now: Date,
+                                           codec: PacketCodec, socket: UDPTransport,
+                                           network: NetworkInterface, port: UInt16) {
+        guard let signal = session.typingSignal(composing: composing, at: now),
+              let packet = try? codec.encode(.typing(signal)),
+              (try? socket.send(packet, to: network.broadcastIP, port: port)) != nil else { return }
+        session.recordTypingSent(signal, at: now)
+    }
+
     private static func refreshDisplay(session: inout ChatSession, at now: Date, uptime: TimeInterval,
                                        view: TerminalChatView?, previousStatus: inout String,
                                        lastRefresh: inout TimeInterval) throws {
@@ -269,6 +284,7 @@ enum CLIApplication {
             view?.showStatus(ip: session.peerIP, online: session.isPeerOnline(at: now))
             previousStatus = status
         }
+        view?.showPeerTyping(session.isPeerTyping(at: now))
         if uptime - lastRefresh >= 0.5 {
             let refreshed = try session.refreshHistory()
             for record in refreshed { view?.showMessage(record, isNew: true) }
@@ -285,6 +301,7 @@ enum CLIApplication {
                   let packet = try? codec.decode(received.data, senderIP: received.senderIP) else { continue }
             switch packet {
             case .heartbeat: session.receiveHeartbeat(from: received.senderIP, at: Date())
+            case .typing(let signal): session.receiveTyping(signal, from: received.senderIP, at: Date())
             case .message(let message):
                 if let record = try session.receiveMessage(message) { view?.showMessage(record, isNew: true) }
             }

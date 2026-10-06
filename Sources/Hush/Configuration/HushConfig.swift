@@ -7,6 +7,8 @@ enum HushConfig {
     static let udpPort: UInt16 = 49_000
     static let heartbeatInterval: TimeInterval = 3
     static let peerOfflineThreshold: TimeInterval = 12
+    static let typingSignalInterval: TimeInterval = 2
+    static let peerTypingExpiry: TimeInterval = 5
     static let messageTransmissionCount = 3
     static let messageTransmissionDuration: TimeInterval = 1
     static let updateCheckInterval: TimeInterval = 600

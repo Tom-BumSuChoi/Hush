@@ -7,6 +7,9 @@ final class TerminalChatView {
     private var escapeBytes: [UInt8] = []
     private var focusReportingObserved = false
     private(set) var focused = false
+    private var peerTyping = false
+    private var typingLineDrawn = false
+    static let typingNotice = "상대 입력 중…"
 
     func finishReadCheck() {
         if !focusReportingObserved { focused = false }
@@ -27,12 +30,26 @@ final class TerminalChatView {
         own ? TerminalPalette.current.own(text) : TerminalPalette.current.normal(text)
     }
 
+    var draft: String { String(decoding: input, as: UTF8.self) }
+
+    // /로 시작하는 명령 입력은 메시지 작성으로 보지 않으며, //로 시작하면 메시지입니다.
+    var composingMessage: Bool {
+        let text = draft
+        return !text.isEmpty && (!text.hasPrefix("/") || text.hasPrefix("//"))
+    }
+
     func showMessage(_ record: RecordedMessage, isNew: Bool) {
         if !record.isOutgoing { displayedIncoming.insert(record.message.identity) }
         let message = record.message
         let text = "[\(Self.clean(message.identity.senderIP))] \(Self.clean(message.content))"
         let line = record.isOutgoing ? Self.styled(text, own: true) : Self.styled("\(isNew ? "새 메시지 " : "")\(text)")
-        write("\r\u{1B}[2K\(line)\n")
+        write("\(clearPromptArea())\(line)\n")
+        redraw()
+    }
+
+    func showPeerTyping(_ typing: Bool) {
+        guard typing != peerTyping else { return }
+        peerTyping = typing
         redraw()
     }
 
@@ -41,12 +58,21 @@ final class TerminalChatView {
     }
 
     func notice(_ text: String) {
-        write("\r\u{1B}[2K\(Self.styled(Self.clean(text)))\n")
+        write("\(clearPromptArea())\(Self.styled(Self.clean(text)))\n")
         redraw()
     }
 
+    // 상대가 입력 중이면 입력 줄 바로 위에 한 줄로 표시하며, 스크롤 기록에는 남기지 않습니다.
     func redraw() {
-        write("\r\u{1B}[2K\(Self.styled("> \(String(decoding: input, as: UTF8.self))"))")
+        let typingLine = peerTyping ? "\(Self.styled(Self.typingNotice))\n" : ""
+        write("\(clearPromptArea())\(typingLine)\r\u{1B}[2K\(Self.styled("> \(draft)"))")
+        typingLineDrawn = peerTyping
+    }
+
+    // 입력 줄과 그 위의 입력 중 줄을 지우고, 커서를 지운 영역의 첫 줄 처음에 둡니다.
+    private func clearPromptArea() -> String {
+        defer { typingLineDrawn = false }
+        return typingLineDrawn ? "\r\u{1B}[2K\u{1B}[1A\u{1B}[2K" : "\r\u{1B}[2K"
     }
 
     func consume(_ bytes: [UInt8]) -> [InputAction] {
@@ -94,6 +120,7 @@ final class TerminalChatView {
     ]
 
     func showHelp() {
+        write(clearPromptArea())
         for line in Self.helpLines { write("\r\u{1B}[2K\(Self.styled(line))\n") }
         redraw()
     }
@@ -101,10 +128,11 @@ final class TerminalChatView {
     // 터미널의 clear 명령처럼 화면과 스크롤 기록을 지우며, 저장된 대화 기록은 건드리지 않습니다.
     func clearScreen() {
         write("\u{1B}[H\u{1B}[2J\u{1B}[3J")
+        typingLineDrawn = false
         redraw()
     }
 
-    func finish() { write("\r\u{1B}[2K\n") }
+    func finish() { write("\(clearPromptArea())\n") }
 
     // /로 시작하는 입력은 전송하지 않는 명령으로 해석하며, /로 시작하는 메시지는 //로 보냅니다.
     private static func action(for text: String) -> InputAction? {

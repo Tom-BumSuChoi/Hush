@@ -141,6 +141,26 @@ def main():
             assert 0.3 <= times[1] - times[0] <= 0.8, f"첫 간격: {times[1] - times[0]:.3f}초"
             assert 0.3 <= times[2] - times[1] <= 0.8, f"두 번째 간격: {times[2] - times[1]:.3f}초"
             assert len(history(directory)) == 1
+
+            # When: 메시지를 쓰기 시작했다가 다 지웁니다.
+            def observe_packet(kind, timeout=3):
+                end = time.monotonic() + timeout
+                while time.monotonic() < end:
+                    ready = select.select([observer, chat.fd], [], [], max(0.01, end - time.monotonic()))[0]
+                    if chat.fd in ready:
+                        chat.output += os.read(chat.fd, 65536)
+                    if observer not in ready:
+                        continue
+                    data, _ = observer.recvfrom(65535)
+                    if fixture_run("decode", base64.b64encode(data).decode()).decode().strip() == kind:
+                        return
+                raise AssertionError(f"{kind} 패킷 대기 실패")
+            chat.send("작")
+            observe_packet("typing")
+            chat.send("\x7f")
+            observe_packet("typingStopped")
+            # Then: 입력 중과 정지를 알리고 기록에는 남기지 않습니다.
+            assert len(history(directory)) == 1
             observer.close()
 
             # Given: 채팅만 실행 중이며 상대 heartbeat와 메시지를 보내는 로컬 UDP가 있습니다.
@@ -149,10 +169,14 @@ def main():
             # When: 상대 heartbeat와 동일한 메시지 세 패킷을 수신합니다.
             incoming.sendto(packet("heartbeat"), ("127.0.0.1", port))
             chat.expect("상대 127.0.0.1: 온라인")
+            incoming.sendto(packet("typing"), ("127.0.0.1", port))
+            chat.expect("상대 입력 중…")
             encrypted = packet("message", "상대 중복 테스트", "1000.123456")
             for _ in range(3):
                 incoming.sendto(encrypted, ("127.0.0.1", port))
             chat.expect("새 메시지 [127.0.0.1] 상대 중복 테스트")
+            # 5초 만료 전에 메시지로 입력 중 줄을 지우고 입력 줄만 다시 그립니다.
+            chat.expect("\x1b[1A\x1b[2K\r\x1b[2K\x1b[32m> \x1b[0m", timeout=1)
             incoming.sendto(b"invalid packet", ("127.0.0.1", port))
             chat.output = b""
             chat.expect("상대 127.0.0.1: 오프라인", timeout=14)
@@ -231,7 +255,7 @@ def main():
             assert "터미널에서 직접 실행하세요" in piped.stderr.decode()
             assert not (pipe_directory / "history.json").exists()
             incoming.close()
-            print("PASS: 비밀번호 숨김·재인증·실제 3회 송신·중복 제거·heartbeat·비밀번호 없는 수신기의 암호화 수신함·복원·중복 실행 방지·터미널 복원")
+            print("PASS: 비밀번호 숨김·재인증·실제 3회 송신·중복 제거·heartbeat·입력 중 표시·비밀번호 없는 수신기의 암호화 수신함·복원·중복 실행 방지·터미널 복원")
         finally:
             for app in apps:
                 app.close()

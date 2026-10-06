@@ -127,4 +127,64 @@ struct TerminalChatViewTests {
         #expect(!cleaned.contains("\u{7}"))
         #expect(cleaned.contains("내용"))
     }
+
+    @Test func 상대가_입력_중이면_입력_줄_바로_위에_표시하고_멈추면_지운다() {
+        // Given: 메시지를 작성하고 있습니다.
+        var output = ""
+        let view = TerminalChatView { output += $0 }
+        _ = view.consume(Array("작성 중".utf8))
+        output = ""
+        // When: 상대가 입력 중이 되었다가 멈춥니다.
+        view.showPeerTyping(true)
+        let shown = output
+        output = ""
+        view.showPeerTyping(true)
+        let repeated = output
+        view.showPeerTyping(false)
+        // Then: 입력 줄 위에 한 줄로 보였다가, 그 줄을 지우고 입력 줄만 다시 그립니다.
+        #expect(shown == "\r\u{1B}[2K\u{1B}[32m상대 입력 중…\u{1B}[0m\n\r\u{1B}[2K\u{1B}[32m> 작성 중\u{1B}[0m")
+        #expect(repeated.isEmpty)
+        #expect(output == "\r\u{1B}[2K\u{1B}[1A\u{1B}[2K\r\u{1B}[2K\u{1B}[32m> 작성 중\u{1B}[0m")
+    }
+
+    @Test func 입력_중_표시는_새_출력_뒤에도_입력_줄_바로_위에_남는다() {
+        // Given: 상대가 입력 중으로 표시되어 있습니다.
+        var output = ""
+        let view = TerminalChatView { output += $0 }
+        view.showPeerTyping(true)
+        output = ""
+        // When: 새 메시지가 표시됩니다.
+        view.showMessage(record(outgoing: false), isNew: true)
+        // Then: 표시 줄을 지운 자리에 메시지를 쓰고, 그 아래에 표시 줄과 입력 줄을 다시 그립니다.
+        #expect(output.hasPrefix("\r\u{1B}[2K\u{1B}[1A\u{1B}[2K\u{1B}[32m새 메시지 [192.168.0.34] 안녕하세요\u{1B}[0m\n"))
+        #expect(output.hasSuffix("\u{1B}[32m상대 입력 중…\u{1B}[0m\n\r\u{1B}[2K\u{1B}[32m> \u{1B}[0m"))
+    }
+
+    @Test func 화면을_지우면_입력_중_표시를_새_화면에_다시_그린다() {
+        // Given: 상대가 입력 중으로 표시되어 있습니다.
+        var output = ""
+        let view = TerminalChatView { output += $0 }
+        view.showPeerTyping(true)
+        output = ""
+        // When: 화면을 지웁니다.
+        view.clearScreen()
+        // Then: 지운 화면에서 이전 줄로 올라가지 않고 표시 줄과 입력 줄을 그립니다.
+        #expect(!output.contains("\u{1B}[1A"))
+        #expect(output.hasSuffix("\u{1B}[32m상대 입력 중…\u{1B}[0m\n\r\u{1B}[2K\u{1B}[32m> \u{1B}[0m"))
+    }
+
+    @Test func 명령_입력은_메시지_작성으로_보지_않는다() {
+        // Given: 입력한 글에 따라 작성 여부를 확인할 채팅 입력 화면이 있습니다.
+        func composing(_ text: String) -> Bool {
+            let view = TerminalChatView { _ in }
+            _ = view.consume(Array(text.utf8))
+            return view.composingMessage
+        }
+        // When: 빈 입력, 명령, 슬래시 두 개, 일반 글을 입력합니다.
+        // Then: 상대에게 보낼 메시지를 쓰는 동안만 작성 중입니다.
+        #expect(!composing(""))
+        #expect(!composing("/he"))
+        #expect(composing("//"))
+        #expect(composing("안녕"))
+    }
 }

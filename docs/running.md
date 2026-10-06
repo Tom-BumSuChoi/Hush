@@ -76,6 +76,8 @@ Enter로 송신하며, Backspace로 마지막 글자를 지우고 Ctrl-U로 입�
 
 그 밖의 `/명령`은 전송하지 않고 알 수 없는 명령이라고 안내한다. 오타로 명령이 메시지로 전송되는 것을 막기 위해서이다.
 
+상대가 메시지를 쓰는 동안 입력 줄 바로 위에 `상대 입력 중…`을 표시한다. 상대가 키를 멈추고 5초가 지나거나, 메시지를 보내거나, 입력을 다 지우면 사라진다. 내가 메시지를 쓸 때는 입력이 바뀔 때 최대 2초에 한 번 입력 중 신호를 보내며, `/`로 시작하는 명령 입력은 알리지 않는다. 두 사람 모두 0.8.0 이상이어야 표시된다.
+
 ## 백그라운드 수신
 
 처음 `hush`를 실행해 비밀번호로 기록을 열면 수신기를 사용자 LaunchAgent `local.hush.receiver`로 등록한다. 수신기는 로그인할 때부터 로그아웃·종료할 때까지 실행되며, 종료되면 launchd가 다시 실행한다. 등록할 때 macOS가 백그라운드 항목 추가 알림을 표시할 수 있다. 이후 `hush`를 실행할 때마다 같은 실행 파일로 등록되어 있는지 확인하고, 설치 경로가 바뀌었으면 다시 등록한다. 기록 위치를 따로 지정한 실행과 `.build` 안의 개발 빌드는 등록하지 않는다.
@@ -106,6 +108,7 @@ swift test
 ```sh
 swift build
 swiftc -parse-as-library Sources/Hush/Configuration/HushConfig.swift \
+  Sources/Hush/Presence/Domain/TypingSignal.swift \
   Sources/Hush/Messaging/Domain/MessageIdentity.swift \
   Sources/Hush/Messaging/Domain/ChatMessage.swift \
   Sources/Hush/Messaging/Domain/RecordedMessage.swift \
@@ -120,7 +123,7 @@ python3 Tools/test_cli.py --binary "$(swift build --show-bin-path)/Hush" \
   --fixture .build/PacketFixture --interface en0
 ```
 
-이 검증은 실제 PTY의 비밀번호 숨김·재인증, UDP 반복 송신과 수신 중복 제거, heartbeat 경계, 터미널 종료 후 저장, 기록 복원, 잘못된 비밀번호·중복 실행·파이프 입력 거부, 터미널 입력 모드 복원을 확인한다. 실제 사내망 두 Mac 사이의 브로드캐스트와 iTerm2·VS Code에서의 사용 검증은 별도로 수행해야 한다.
+이 검증은 실제 PTY의 비밀번호 숨김·재인증, UDP 반복 송신과 수신 중복 제거, heartbeat 경계, 입력 중·정지 신호 송신과 입력 중 줄 표시·해제, 터미널 종료 후 저장, 기록 복원, 잘못된 비밀번호·중복 실행·파이프 입력 거부, 터미널 입력 모드 복원을 확인한다. 실제 사내망 두 Mac 사이의 브로드캐스트와 iTerm2·VS Code에서의 사용 검증은 별도로 수행해야 한다.
 
 ## 자동 업데이트
 

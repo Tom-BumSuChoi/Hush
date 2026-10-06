@@ -32,7 +32,10 @@ struct ChatSession {
         let record = RecordedMessage(message: message, isOutgoing: false)
         try store.append(record)
         peerIP = message.identity.senderIP
-        return messaging.receive(message).map { _ in record }
+        // 반복 수신본이 아닌 새 메시지가 왔을 때만 입력 중 표시를 끝냅니다.
+        guard messaging.receive(message) != nil else { return nil }
+        presence.clearPeerTyping()
+        return record
     }
 
     mutating func receiveHeartbeat(from ip: String, at now: Date) {
@@ -41,10 +44,17 @@ struct ChatSession {
         presence.receiveHeartbeat(at: now)
     }
 
+    mutating func receiveTyping(_ signal: TypingSignal, from ip: String, at now: Date) {
+        guard !ownIPs.contains(ip) else { return }
+        presence.receiveTyping(signal, at: now)
+    }
+
     mutating func refreshHistory() throws -> [RecordedMessage] {
         var added: [RecordedMessage] = []
         for record in try store.load() {
-            if messaging.receive(record.message) != nil { added.append(record) }
+            guard messaging.receive(record.message) != nil else { continue }
+            if !record.isOutgoing { presence.clearPeerTyping() }
+            added.append(record)
         }
         return added
     }
@@ -52,4 +62,7 @@ struct ChatSession {
     func isPeerOnline(at now: Date) -> Bool { presence.isPeerOnline(at: now) }
     func shouldSendHeartbeat(at now: Date) -> Bool { presence.shouldSendHeartbeat(at: now) }
     mutating func recordHeartbeatSent(at now: Date) { presence.recordHeartbeatSent(at: now) }
+    func isPeerTyping(at now: Date) -> Bool { presence.isPeerTyping(at: now) }
+    func typingSignal(composing: Bool, at now: Date) -> TypingSignal? { presence.typingSignal(composing: composing, at: now) }
+    mutating func recordTypingSent(_ signal: TypingSignal, at now: Date) { presence.recordTypingSent(signal, at: now) }
 }

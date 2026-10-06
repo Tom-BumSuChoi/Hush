@@ -62,4 +62,15 @@ struct PacketCodecTests {
         // Then: 패킷 크기 초과를 반환합니다.
         #expect(throws: PacketCodec.PacketError.messageTooLarge) { try codec.encode(.message(message)) }
     }
+
+    @Test func 입력_중과_정지_신호는_메시지나_heartbeat와_구분된다() throws {
+        // Given: 통신용 키가 있습니다.
+        let codec = PacketCodec(key: SymmetricKey(size: .bits256))
+        // When: 입력 중 신호와 정지 신호를 암복호화합니다.
+        let typing = try codec.decode(codec.encode(.typing(.typing)), senderIP: "192.168.0.35")
+        let stopped = try codec.decode(codec.encode(.typing(.stopped)), senderIP: "192.168.0.35")
+        // Then: 대화에 기록할 메시지나 heartbeat가 아닌 각각의 신호입니다.
+        #expect(typing == .typing(.typing))
+        #expect(stopped == .typing(.stopped))
+    }
 }

@@ -4,6 +4,7 @@ import Foundation
 enum NetworkPacket: Equatable {
     case message(ChatMessage)
     case heartbeat
+    case typing(TypingSignal)
 }
 
 struct PacketCodec {
@@ -25,6 +26,8 @@ struct PacketCodec {
             payload = Payload(version: 1, kind: .message, createdAt: message.identity.createdAt, content: message.content)
         case .heartbeat:
             payload = Payload(version: 1, kind: .heartbeat, createdAt: nil, content: nil)
+        case .typing(let signal):
+            payload = Payload(version: 1, kind: signal == .typing ? .typing : .typingStopped, createdAt: nil, content: nil)
         }
         let data = try JSONEncoder().encode(payload)
         let box = try AES.GCM.seal(data, using: key, authenticating: context)
@@ -50,6 +53,9 @@ struct PacketCodec {
         case .heartbeat:
             guard payload.content == nil, payload.createdAt == nil else { throw PacketError.invalidPayload }
             return .heartbeat
+        case .typing, .typingStopped:
+            guard payload.content == nil, payload.createdAt == nil else { throw PacketError.invalidPayload }
+            return .typing(payload.kind == .typing ? .typing : .stopped)
         }
     }
 
@@ -60,7 +66,8 @@ struct PacketCodec {
     }
 
     private struct Payload: Codable {
-        enum Kind: String, Codable { case message, heartbeat }
+        // 이전 버전은 모르는 종류를 해석하지 못해 버리므로, 종류를 늘려도 형식 버전은 그대로 둡니다.
+        enum Kind: String, Codable { case message, heartbeat, typing, typingStopped }
         let version: Int
         let kind: Kind
         let createdAt: Date?

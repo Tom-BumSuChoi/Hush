@@ -129,4 +129,41 @@ struct PresenceServiceTests {
         // Then: 내 송신으로부터 3초에 다음 heartbeat를 보낼 때입니다.
         #expect(service.shouldSendHeartbeat(at: sentAt.addingTimeInterval(3)))
     }
+
+    @Test func 채팅용_역할은_입력_중을_알리고_상대_입력_중_신호로_상태를_판단한다() {
+        // Given: 채팅용 역할로 시작했습니다.
+        var service = PresenceService(role: .chat)
+        let now = Date(timeIntervalSince1970: 1_000)
+
+        // When: 메시지를 쓰기 시작하고 상대의 입력 중 신호를 받습니다.
+        let signal = service.typingSignal(composing: true, at: now)
+        service.receiveTyping(.typing, at: now)
+
+        // Then: 내 입력 중을 알리고 상대는 입력 중입니다.
+        #expect(signal == .typing)
+        #expect(service.isPeerTyping(at: now))
+    }
+
+    @Test func 백그라운드_수신기_역할은_입력_중을_알리지_않는다() {
+        // Given: 백그라운드 수신기 역할로 시작했습니다.
+        let service = PresenceService(role: .backgroundReceiver)
+
+        // When: 메시지 작성으로 입력이 바뀐 것처럼 확인합니다.
+        let signal = service.typingSignal(composing: true, at: Date(timeIntervalSince1970: 1_000))
+
+        // Then: 수신기는 입력 중을 알리지 않습니다.
+        #expect(signal == nil)
+    }
+
+    @Test func 내_입력_중_송신은_상대_입력_중_상태를_바꾸지_않는다() {
+        // Given: 상대의 입력 중 신호를 받은 적이 없는 채팅용 역할입니다.
+        var service = PresenceService(role: .chat)
+        let now = Date(timeIntervalSince1970: 1_000)
+
+        // When: 내 입력 중 송신을 기록합니다.
+        service.recordTypingSent(.typing, at: now)
+
+        // Then: 내 송신으로 상대가 입력 중이라고 판단하지 않습니다.
+        #expect(!service.isPeerTyping(at: now))
+    }
 }
