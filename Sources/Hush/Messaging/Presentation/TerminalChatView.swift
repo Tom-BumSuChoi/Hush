@@ -102,7 +102,6 @@ final class TerminalChatView {
                 var text = String(decoding: input, as: UTF8.self)
                 if !text.isEmpty { text.removeLast() }
                 input = Array(text.utf8)
-            case 21: input.removeAll()
             default:
                 if byte >= 32 { input.append(byte) }
             }
@@ -116,7 +115,7 @@ final class TerminalChatView {
         "/clear  화면 지우기 (대화 기록은 유지)",
         "/quit   메뉴로 돌아가기 (빈 입력에서 Ctrl-D도 같음)",
         "//내용  /로 시작하는 메시지 보내기",
-        "Ctrl-U 입력 지우기 · Ctrl-C 즉시 종료",
+        "Ctrl-C  즉시 종료",
     ]
 
     func showHelp() {
